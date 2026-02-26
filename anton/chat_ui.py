@@ -98,6 +98,19 @@ TOOL_MESSAGES = [
     "Letting the tools cook...",
 ]
 
+CANCEL_MESSAGES = [
+    "Ok, dropping everything\u2026",
+    "Alright, pulling the plug\u2026",
+    "Stopping the presses\u2026",
+    "Hitting the brakes\u2026",
+    "Winding down\u2026",
+    "Wrapping it up\u2026",
+    "Ok, letting go of this one\u2026",
+    "Understood, shutting it down\u2026",
+    "Copy that, standing down\u2026",
+    "Roger, aborting mission\u2026",
+]
+
 PHASE_LABELS = {
     "memory_recall": "Memory",
     "planning": "Planning",
@@ -124,6 +137,7 @@ class StreamDisplay:
         self._answer_started = False
         self._last_was_tool = False
         self._footer_msg: str = ""
+        self._cancel_msg: str = ""
 
     def _set_status(self, text: str) -> None:
         if self._toolbar is not None:
@@ -148,6 +162,7 @@ class StreamDisplay:
         self._in_tool_phase = False
         self._answer_started = False
         self._last_was_tool = False
+        self._cancel_msg = ""
         self._footer_msg = random.choice(WORKING_FOOTER_MESSAGES)  # noqa: S311
 
     def append_text(self, delta: str) -> None:
@@ -261,6 +276,11 @@ class StreamDisplay:
             self._live.stop()
             self._live = None
 
+    def show_cancelling(self) -> None:
+        """Update the footer to acknowledge that cancellation is in progress."""
+        self._cancel_msg = random.choice(CANCEL_MESSAGES)  # noqa: S311
+        self._refresh_live()
+
     # --- Private helpers ---
 
     def _build_activity_tree(self, final: bool = False) -> Text:
@@ -311,7 +331,10 @@ class StreamDisplay:
             parts.append(spinner)
 
         # Working footer — visible while streaming
-        footer = Text(f"\n\u23f5\u23f5 Esc to stop \u2014 {self._footer_msg}", style="#ff69b4")
+        if self._cancel_msg:
+            footer = Text(f"\n\u23f5\u23f5 {self._cancel_msg}", style="#ff69b4")
+        else:
+            footer = Text(f"\n\u23f5\u23f5 Esc to stop \u2014 {self._footer_msg}", style="#ff69b4")
         parts.append(footer)
 
         self._live.update(Group(*parts) if len(parts) > 1 else parts[0])

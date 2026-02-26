@@ -4,7 +4,7 @@ import asyncio
 import os
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -910,8 +910,9 @@ def _print_slash_help(console: Console) -> None:
 class _EscapeWatcher:
     """Detect Escape keypress during streaming via cbreak terminal mode."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_cancel: Callable[[], None] | None = None) -> None:
         self.cancelled = asyncio.Event()
+        self._on_cancel = on_cancel
         self._task: asyncio.Task | None = None
         self._old_settings: list | None = None
 
@@ -940,6 +941,8 @@ class _EscapeWatcher:
             while True:
                 ch = await loop.run_in_executor(None, lambda: os.read(fd, 1))
                 if ch == b"\x1b":
+                    if self._on_cancel is not None:
+                        self._on_cancel()
                     self.cancelled.set()
                     return
         finally:
@@ -1117,7 +1120,7 @@ async def _chat_loop(console: Console, settings: AntonSettings) -> None:
             total_output = 0
 
             try:
-                async with _EscapeWatcher() as esc:
+                async with _EscapeWatcher(on_cancel=display.show_cancelling) as esc:
                     async for event in session.turn_stream(message_content):
                         if esc.cancelled.is_set():
                             raise KeyboardInterrupt
