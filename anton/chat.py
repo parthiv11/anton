@@ -31,13 +31,11 @@ from anton.llm.provider import (
 )
 from anton.scratchpad import ScratchpadManager
 from anton.tools import (
-    REQUEST_SECRET_TOOL,
     SCRATCHPAD_TOOL,
     UPDATE_CONTEXT_TOOL,
     dispatch_tool,
     format_cell_result,
     prepare_scratchpad_exec,
-    prompt_secret,
 )
 
 if TYPE_CHECKING:
@@ -84,23 +82,7 @@ class ChatSession:
             coding_provider=coding_provider,
             coding_model=getattr(llm_client, "coding_model", ""),
             coding_api_key=coding_api_key,
-            secret_handler=self._make_secret_handler(),
         )
-
-    def _make_secret_handler(self):
-        """Create a closure that prompts the user for secrets via the console."""
-        def handler(var_name: str, prompt_text: str) -> str | None:
-            if self._workspace is None or self._console is None:
-                return None
-            # If already stored, return it without prompting
-            if self._workspace.has_secret(var_name):
-                return os.environ.get(var_name) or self._workspace.get_secret(var_name)
-            value = prompt_secret(self._console, var_name, prompt_text)
-            if not value:
-                return None
-            self._workspace.set_secret(var_name, value)
-            return value
-        return handler
 
     @property
     def history(self) -> list[dict]:
@@ -152,8 +134,6 @@ class ChatSession:
         tools = [scratchpad_tool]
         if self._self_awareness is not None:
             tools.append(UPDATE_CONTEXT_TOOL)
-        if self._workspace is not None:
-            tools.append(REQUEST_SECRET_TOOL)
         return tools
 
     async def close(self) -> None:
@@ -709,7 +689,6 @@ def _print_slash_help(console: Console) -> None:
     console.print()
     console.print("[anton.cyan]Available commands:[/]")
     console.print("  [bold]/setup[/]    — Configure provider, model, and API key")
-    console.print("  [bold]/connect[/]  — Connect to a data source (guided credential collection)")
     console.print("  [bold]/paste[/]    — Attach clipboard image to your message")
     console.print("  [bold]/help[/]     — Show this help message")
     console.print("  [bold]exit[/]                  — Quit the chat")
@@ -860,22 +839,6 @@ async def _chat_loop(console: Console, settings: AntonSettings) -> None:
                     else:
                         console.print("[anton.warning]No image found on clipboard.[/]")
                         continue
-                elif cmd == "/connect":
-                    user_text = parts[1] if len(parts) > 1 else ""
-                    if user_text:
-                        stripped = (
-                            f"I want to connect to {user_text}. Ask me for the connection "
-                            f"details I need to provide, collect them securely using "
-                            f"request_secret, and then test the connection in the scratchpad."
-                        )
-                    else:
-                        stripped = (
-                            "I want to connect to a data source. Ask me what type "
-                            "(PostgreSQL, MySQL, API, etc.), then collect the minimal "
-                            "credentials needed using request_secret, and test the "
-                            "connection in the scratchpad."
-                        )
-                    # Fall through to turn_stream
                 else:
                     console.print(f"[anton.warning]Unknown command: {cmd}[/]")
                     continue

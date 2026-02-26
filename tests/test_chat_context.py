@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from anton.chat import ChatSession, REQUEST_SECRET_TOOL, UPDATE_CONTEXT_TOOL
+from anton.chat import ChatSession
+from anton.tools import UPDATE_CONTEXT_TOOL
 from anton.context.self_awareness import SelfAwarenessContext
 from anton.llm.provider import LLMResponse, ToolCall, Usage
 from anton.workspace import Workspace
@@ -30,23 +31,6 @@ def _update_context_response(
                 id=tool_id,
                 name="update_context",
                 input={"updates": updates},
-            ),
-        ],
-        usage=Usage(input_tokens=10, output_tokens=20),
-        stop_reason="tool_use",
-    )
-
-
-def _request_secret_response(
-    text: str, variable_name: str, prompt_text: str, tool_id: str = "tc_sec_1"
-) -> LLMResponse:
-    return LLMResponse(
-        content=text,
-        tool_calls=[
-            ToolCall(
-                id=tool_id,
-                name="request_secret",
-                input={"variable_name": variable_name, "prompt_text": prompt_text},
             ),
         ],
         usage=Usage(input_tokens=10, output_tokens=20),
@@ -174,102 +158,6 @@ class TestUpdateContextTool:
         assert "Context updated" in result_content
 
 
-class TestRequestSecretTool:
-    def test_tool_definition_structure(self):
-        assert REQUEST_SECRET_TOOL["name"] == "request_secret"
-        props = REQUEST_SECRET_TOOL["input_schema"]["properties"]
-        assert "variable_name" in props
-        assert "prompt_text" in props
-
-    async def test_request_secret_stores_value(self, sa, ws, monkeypatch):
-        """request_secret stores the value and returns confirmation."""
-        mock_llm = AsyncMock()
-        mock_llm.plan = AsyncMock(
-            side_effect=[
-                _request_secret_response(
-                    "I need your GitHub token.",
-                    "GITHUB_TOKEN",
-                    "Enter your GitHub personal access token",
-                ),
-                _text_response("Great, GITHUB_TOKEN is configured."),
-            ]
-        )
-
-        # Mock the password input to simulate user entering a secret
-        mock_console = MagicMock()
-        monkeypatch.setattr(
-            "anton.tools._password_input",
-            lambda prompt_label: "ghp_testtoken123",
-        )
-
-        session = ChatSession(
-            mock_llm,
-            self_awareness=sa,
-            workspace=ws,
-            console=mock_console,
-        )
-        reply = await session.turn("I need to connect to GitHub")
-
-        # Secret should be stored
-        assert ws.get_secret("GITHUB_TOKEN") == "ghp_testtoken123"
-        # Reply should NOT contain the actual secret
-        assert "ghp_testtoken123" not in reply
-
-    async def test_request_secret_already_set(self, sa, ws):
-        """If the secret is already set, don't ask again."""
-        ws.set_secret("EXISTING_KEY", "already_here")
-
-        mock_llm = AsyncMock()
-        mock_llm.plan = AsyncMock(
-            side_effect=[
-                _request_secret_response(
-                    "Let me check.",
-                    "EXISTING_KEY",
-                    "Enter the key",
-                ),
-                _text_response("It's already configured."),
-            ]
-        )
-        mock_console = MagicMock()
-
-        session = ChatSession(
-            mock_llm,
-            self_awareness=sa,
-            workspace=ws,
-            console=mock_console,
-        )
-        await session.turn("set up the key")
-
-        # Console.input should NOT have been called since key exists
-        mock_console.input.assert_not_called()
-
-    async def test_request_secret_tool_included_with_workspace(self, ws):
-        """request_secret tool is offered when workspace is provided."""
-        mock_llm = AsyncMock()
-        mock_llm.plan = AsyncMock(return_value=_text_response("Hi!"))
-
-        session = ChatSession(mock_llm, workspace=ws)
-        await session.turn("hello")
-
-        call_kwargs = mock_llm.plan.call_args
-        tools = call_kwargs.kwargs.get("tools", [])
-        tool_names = [t["name"] for t in tools]
-        assert "request_secret" in tool_names
-
-    async def test_request_secret_not_included_without_workspace(self):
-        """request_secret tool is NOT offered when no workspace."""
-        mock_llm = AsyncMock()
-        mock_llm.plan = AsyncMock(return_value=_text_response("Hi!"))
-
-        session = ChatSession(mock_llm, workspace=None)
-        await session.turn("hello")
-
-        call_kwargs = mock_llm.plan.call_args
-        tools = call_kwargs.kwargs.get("tools", [])
-        tool_names = [t["name"] for t in tools]
-        assert "request_secret" not in tool_names
-
-
 class TestAntonMdInjection:
     async def test_anton_md_injected_into_system_prompt(self, ws, sa):
         """anton.md content is injected into the system prompt."""
@@ -354,15 +242,3 @@ class TestRuntimeContext:
         system_prompt = call_kwargs.kwargs.get("system", "")
         assert "WAIT for their reply" in system_prompt
 
-    async def test_secret_handling_in_prompt(self):
-        """System prompt includes secret handling rules."""
-        mock_llm = AsyncMock()
-        mock_llm.plan = AsyncMock(return_value=_text_response("Hello!"))
-
-        session = ChatSession(mock_llm, runtime_context="")
-        await session.turn("hi")
-
-        call_kwargs = mock_llm.plan.call_args
-        system_prompt = call_kwargs.kwargs.get("system", "")
-        assert "request_secret" in system_prompt
-        assert "NEVER passes through you" in system_prompt

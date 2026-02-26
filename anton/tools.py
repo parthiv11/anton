@@ -96,30 +96,6 @@ UPDATE_CONTEXT_TOOL = {
     },
 }
 
-REQUEST_SECRET_TOOL = {
-    "name": "request_secret",
-    "description": (
-        "Request a secret value (API key, token, password) from the user. "
-        "The value is stored directly in .anton/.env and NEVER passed through the LLM. "
-        "After calling this, you will be told the variable has been set — use it by name."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "variable_name": {
-                "type": "string",
-                "description": "Environment variable name to store (e.g. 'GITHUB_TOKEN', 'DATABASE_PASSWORD')",
-            },
-            "prompt_text": {
-                "type": "string",
-                "description": "What to ask the user (e.g. 'Please enter your GitHub personal access token')",
-            },
-        },
-        "required": ["variable_name", "prompt_text"],
-    },
-}
-
-
 SCRATCHPAD_TOOL = {
     "name": "scratchpad",
     "description": (
@@ -148,11 +124,7 @@ SCRATCHPAD_TOOL = {
         "sample(var) inspects any variable with type-aware formatting — DataFrames get "
         "shape/dtypes/head, dicts get keys/values, lists get length/items. "
         "Defaults to 'preview' mode (compact); use sample(var, mode='full') for complete dump.\n"
-        "All .anton/.env secrets are available as environment variables (os.environ).\n"
-        "need_secret(variable_name, prompt_text) prompts the user for a secret (API key, "
-        "password, token) directly from scratchpad code. The value is stored in .anton/.env "
-        "and set in os.environ — never returned as a variable. Use this when your code "
-        "discovers it needs a credential mid-execution.\n\n"
+        "All .anton/.env secrets are available as environment variables (os.environ).\n\n"
         "IMPORTANT: Cells have an inactivity timeout of 30 seconds — if a cell produces "
         "no output and no progress() calls for 30s, it is killed and all state is lost. "
         "For long-running code (API calls, data extraction, heavy computation), call "
@@ -215,68 +187,6 @@ def handle_update_context(session: ChatSession, tc_input: dict) -> str:
 
     actions = session._self_awareness.apply_updates(updates)
     return "Context updated: " + "; ".join(actions)
-
-
-def _password_input(prompt_label: str) -> str:
-    """Read a password with hidden input. Separated for testability."""
-    import getpass
-    return getpass.getpass(prompt_label)
-
-
-def prompt_secret(console, var_name: str, prompt_text: str) -> str:
-    """Prompt the user for a secret with hidden input and context.
-
-    Shows a contextual banner explaining what's needed and why.
-    Input is hidden (standard password behavior).
-    If the user enters nothing, asks to confirm empty value or retry.
-    Returns the stripped value (may be empty if confirmed).
-    """
-    console.print()
-    console.print(f"  [bold]Secret requested:[/] [anton.cyan]{var_name}[/]")
-    console.print(f"  {prompt_text}")
-    console.print(f"  [anton.muted]Stored in .anton/.env · never shown to the AI · input is hidden[/]")
-
-    while True:
-        value = _password_input(f"  {var_name}> ")
-        value = value.strip()
-        if value:
-            return value
-        # Empty input — confirm or retry
-        answer = console.input(
-            "  [anton.warning]No value entered.[/] Use empty password? [dim](y to confirm, Enter to retry):[/] "
-        ).strip().lower()
-        if answer in ("y", "yes"):
-            return ""
-
-
-def handle_request_secret(session: ChatSession, tc_input: dict) -> str:
-    """Handle a request_secret tool call.
-
-    Asks the user directly for the secret value, stores it in .env,
-    and returns a confirmation — NEVER returns the actual secret value.
-    """
-    if session._workspace is None or session._console is None:
-        return "Secret storage not available."
-
-    var_name = tc_input.get("variable_name", "")
-    prompt_text = tc_input.get("prompt_text", f"Enter value for {var_name}")
-
-    if not var_name:
-        return "No variable_name provided."
-
-    # Check if already set
-    if session._workspace.has_secret(var_name):
-        return f"Variable {var_name} is already set in .anton/.env."
-
-    # Ask user directly — this bypasses the LLM entirely
-    value = prompt_secret(session._console, var_name, prompt_text)
-
-    if not value:
-        return f"No value provided for {var_name}. Variable not set."
-
-    # Store securely — value never touches the LLM
-    session._workspace.set_secret(var_name, value)
-    return f"Variable {var_name} has been set in .anton/.env. You can now use it."
 
 
 async def prepare_scratchpad_exec(session: ChatSession, tc_input: dict):
@@ -399,8 +309,6 @@ async def dispatch_tool(session: ChatSession, tool_name: str, tc_input: dict) ->
     """Dispatch a tool call by name. Returns result text."""
     if tool_name == "update_context":
         return handle_update_context(session, tc_input)
-    elif tool_name == "request_secret":
-        return handle_request_secret(session, tc_input)
     elif tool_name == "scratchpad":
         return await handle_scratchpad(session, tc_input)
     else:
