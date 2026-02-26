@@ -552,10 +552,20 @@ async def _handle_connect(
     console.print("[anton.cyan]Connect to MindsDB[/]")
     console.print()
 
-    # 1. URL
+    # 1. URL – default to last successful URL if available
+    default_url = "https://mdb.ai"
+    existing = workspace.get_secret("MINDS_CONNECTION")
+    if existing:
+        try:
+            prev_url = json.loads(existing).get("url")
+            if prev_url:
+                default_url = prev_url
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     url = Prompt.ask(
         "MindsDB URL",
-        default="https://mdb.ai",
+        default=default_url,
         console=console,
     ).strip().rstrip("/")
 
@@ -563,14 +573,20 @@ async def _handle_connect(
     if url and not url.startswith(("http://", "https://")):
         url = f"https://{url}"
 
-    # 2. API key
+    # 2. API key – reuse last key if user presses Enter
+    prev_api_key = workspace.get_secret("MINDS_API_KEY") or ""
+    if prev_api_key:
+        console.print("[anton.muted]Press Enter to keep existing API key[/]")
+
     api_key = Prompt.ask(
         "API key",
         password=True,
         console=console,
     ).strip()
 
-    if not api_key:
+    if not api_key and prev_api_key:
+        api_key = prev_api_key
+    elif not api_key:
         console.print("[anton.error]No API key provided. Aborting.[/]")
         console.print()
         return
