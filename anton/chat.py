@@ -897,12 +897,12 @@ def _print_slash_help(console: Console) -> None:
     """Print available slash commands."""
     console.print()
     console.print("[anton.cyan]Available commands:[/]")
-    console.print("  [bold]/setup[/]       — Configure provider, model, and API key")
+    console.print("  [bold]/setup[/]       — Configure LLM provider, model, and API key")
     console.print("  [bold]/connect[/]     — Connect to MindsDB (mdb.ai)")
     console.print("  [bold]/disconnect[/]  — Remove MindsDB connection")
     console.print("  [bold]/paste[/]       — Attach clipboard image to your message")
     console.print("  [bold]/help[/]        — Show this help message")
-    console.print("  [bold]exit[/]                     — Quit the chat")
+    console.print("  [bold]exit[/]         — Quit the chat")
     console.print()
 
 

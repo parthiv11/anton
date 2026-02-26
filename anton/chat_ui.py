@@ -76,6 +76,19 @@ THINKING_MESSAGES = [
     "Crunching embeddings...",
 ]
 
+WORKING_FOOTER_MESSAGES = [
+    "working through your request",
+    "piecing together a solution",
+    "reasoning through the problem",
+    "exploring the best approach",
+    "connecting the dots for you",
+    "building your answer step by step",
+    "untangling the problem for you",
+    "chewing on this one carefully",
+    "cooking up a solid answer",
+    "wiring together a solution",
+]
+
 TOOL_MESSAGES = [
     "Rolling up sleeves...",
     "Firing up the agent...",
@@ -109,6 +122,7 @@ class StreamDisplay:
         self._thinking_msg: str = ""
         self._in_tool_phase = False
         self._answer_started = False
+        self._footer_msg: str = ""
 
     def _set_status(self, text: str) -> None:
         if self._toolbar is not None:
@@ -132,6 +146,7 @@ class StreamDisplay:
         self._activities = []
         self._in_tool_phase = False
         self._answer_started = False
+        self._footer_msg = random.choice(WORKING_FOOTER_MESSAGES)  # noqa: S311
 
     def append_text(self, delta: str) -> None:
         if self._live is None:
@@ -286,5 +301,9 @@ class StreamDisplay:
             # Nothing yet — just spinner
             spinner = Spinner("dots", text=Text(f" {self._thinking_msg}", style="anton.muted"))
             parts.append(spinner)
+
+        # Working footer — visible while streaming
+        footer = Text(f"\n\u23f5\u23f5 press Esc to stop \u2014 {self._footer_msg}", style="#ff69b4")
+        parts.append(footer)
 
         self._live.update(Group(*parts) if len(parts) > 1 else parts[0])
