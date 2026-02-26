@@ -122,6 +122,7 @@ class StreamDisplay:
         self._thinking_msg: str = ""
         self._in_tool_phase = False
         self._answer_started = False
+        self._last_was_tool = False
         self._footer_msg: str = ""
 
     def _set_status(self, text: str) -> None:
@@ -146,14 +147,19 @@ class StreamDisplay:
         self._activities = []
         self._in_tool_phase = False
         self._answer_started = False
+        self._last_was_tool = False
         self._footer_msg = random.choice(WORKING_FOOTER_MESSAGES)  # noqa: S311
 
     def append_text(self, delta: str) -> None:
         if self._live is None:
             return
         if self._in_tool_phase:
+            # Ensure a paragraph break when new text arrives after tool activity
+            if self._buffer and self._last_was_tool:
+                self._buffer += "\n\n"
             self._buffer += delta
             self._answer_started = True
+            self._last_was_tool = False
         else:
             self._initial_text += delta
         self._started = True
@@ -166,6 +172,7 @@ class StreamDisplay:
         if self._buffer:
             self._buffer += "\n\n"
         self._buffer += content
+        self._last_was_tool = True
         self._started = True
         self._refresh_live()
 
@@ -178,6 +185,7 @@ class StreamDisplay:
         if self._live is None:
             return
         self._in_tool_phase = True
+        self._last_was_tool = True
         activity = _ToolActivity(tool_id=tool_id, name=name)
         self._activities.append(activity)
         self._refresh_live()
