@@ -26,6 +26,35 @@ if _scratchpad_model:
         _llm_provider = _ProviderClass()  # reads API key from env
         _llm_model = _scratchpad_model
 
+        _LLM_HEARTBEAT_INTERVAL = 10  # seconds between heartbeats during LLM calls
+
+        async def _run_with_heartbeat(coro):
+            """Run an async coroutine while emitting progress heartbeats.
+
+            LLM API calls can block for 30s+.  Without heartbeats, the
+            scratchpad inactivity timeout (30s) kills the process.  This
+            wrapper runs a heartbeat task alongside the real work.
+            """
+            async def _heartbeat():
+                elapsed = 0
+                while True:
+                    await _llm_asyncio.sleep(_LLM_HEARTBEAT_INTERVAL)
+                    elapsed += _LLM_HEARTBEAT_INTERVAL
+                    _real_stdout.write(
+                        _PROGRESS_MARKER + f" Waiting for LLM… ({elapsed}s)\n"
+                    )
+                    _real_stdout.flush()
+
+            beat = _llm_asyncio.create_task(_heartbeat())
+            try:
+                return await coro
+            finally:
+                beat.cancel()
+                try:
+                    await beat
+                except _llm_asyncio.CancelledError:
+                    pass
+
         class _ScratchpadLLM:
             """Sync LLM wrapper for scratchpad use. Mirrors SkillLLM interface."""
 
@@ -34,14 +63,20 @@ if _scratchpad_model:
                 return _llm_model
 
             def complete(self, *, system, messages, tools=None, tool_choice=None, max_tokens=4096):
-                """Call the LLM synchronously. Returns an LLMResponse."""
-                return _llm_asyncio.run(_llm_provider.complete(
-                    model=_llm_model,
-                    system=system,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice=tool_choice,
-                    max_tokens=max_tokens,
+                """Call the LLM synchronously. Returns an LLMResponse.
+
+                Automatically emits progress heartbeats every 10s so that
+                long API calls don't trip the scratchpad inactivity timeout.
+                """
+                return _llm_asyncio.run(_run_with_heartbeat(
+                    _llm_provider.complete(
+                        model=_llm_model,
+                        system=system,
+                        messages=messages,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        max_tokens=max_tokens,
+                    )
                 ))
 
             def generate_object(self, schema_class, *, system, messages, max_tokens=4096):
