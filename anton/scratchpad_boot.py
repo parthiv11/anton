@@ -185,32 +185,6 @@ def progress(message=""):
 
 namespace["progress"] = progress
 
-# --- Inject minds_client when a Mind is connected ---
-# NOTE: Must come after progress() is defined since MindsQueryClient uses it.
-_minds_connection_raw = os.environ.get("MINDS_CONNECTION", "")
-if _minds_connection_raw:
-    try:
-        _minds_conn = json.loads(_minds_connection_raw)
-        _minds_url = _minds_conn.get("url", "")
-        _minds_api_key = _minds_conn.get("api_key") or os.environ.get("MINDS_API_KEY", "")
-        _minds_mind_name = _minds_conn.get("mind_name", "")
-        if _minds_url and _minds_api_key and _minds_mind_name:
-            from anton.minds_query import MindsQueryClient
-            _minds_verify_ssl = _minds_conn.get("verify_ssl", True)
-            _minds_client_instance = MindsQueryClient(
-                mindsserver_url=_minds_url,
-                api_key=_minds_api_key,
-                mind_name=_minds_mind_name,
-                verify_ssl=_minds_verify_ssl,
-                progress_fn=progress,
-            )
-            namespace["minds_client"] = _minds_client_instance
-    except Exception as _minds_exc:
-        import traceback as _tb
-        sys.stderr.write(f"[scratchpad] minds_client init failed: {_minds_exc}\n")
-        sys.stderr.write(_tb.format_exc() + "\n")
-        sys.stderr.flush()
-
 # --- Variable inspector ---
 
 def sample(var, mode="preview", _name=None):

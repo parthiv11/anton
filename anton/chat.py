@@ -125,42 +125,9 @@ class ChatSession:
             ],
         })
 
-    def _build_minds_context(self) -> str:
-        """Build the minds_context block for the system prompt."""
-        if self._workspace is None:
-            return ""
-        raw = self._workspace.get_secret("MINDS_CONNECTION")
-        if not raw:
-            return ""
-        try:
-            import json
-            conn = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return ""
-        mind_name = conn.get("mind_name", "")
-        if not mind_name:
-            return ""
-        return (
-            "\n\nMINDSDB DATA ACCESS:\n"
-            f"- You are connected to Mind '{mind_name}'.\n"
-            "- The scratchpad has a pre-loaded `minds_client` object (MindsQueryClient) with:\n"
-            "  - minds_client.get_data_catalog() — returns a dict of all datasources, tables, "
-            "and columns available to this Mind. Call this first to discover what data is available.\n"
-            "  - minds_client.run_native_query_df(native_query, datasource_name) — runs a native "
-            "SQL query against a datasource and returns a pandas DataFrame.\n"
-            "- Example usage in scratchpad:\n"
-            "    catalog = minds_client.get_data_catalog()\n"
-            "    sample(catalog)\n"
-            "    df = minds_client.run_native_query_df('SELECT * FROM users LIMIT 10', 'my_postgres')\n"
-            "    sample(df)\n"
-            "- Always start by exploring the catalog to understand available data before querying."
-        )
-
     def _build_system_prompt(self) -> str:
-        minds_context = self._build_minds_context()
         prompt = CHAT_SYSTEM_PROMPT.format(
             runtime_context=self._runtime_context,
-            minds_context=minds_context,
         )
         if self._self_awareness is not None:
             sa_section = self._self_awareness.build_prompt_section()
@@ -202,14 +169,6 @@ class ChatSession:
             else:
                 extra = f"\n\nInstalled packages: {len(pkg_list)} total (standard library plus dependencies)."
             scratchpad_tool["description"] = SCRATCHPAD_TOOL["description"] + extra
-
-        # Enrich scratchpad description when a Mind is connected
-        if self._workspace is not None and self._workspace.get_secret("MINDS_CONNECTION"):
-            scratchpad_tool["description"] += (
-                "\n\nMindsDB Mind connected — `minds_client` is pre-loaded in the namespace. "
-                "Use minds_client.get_data_catalog() to discover datasources/tables/columns, "
-                "and minds_client.run_native_query_df(query, datasource) to query data as DataFrames."
-            )
 
         tools = [scratchpad_tool]
         if self._self_awareness is not None:
@@ -618,166 +577,6 @@ async def _handle_setup(
     )
 
 
-async def _handle_connect(
-    console: Console,
-    workspace: Workspace,
-) -> None:
-    """Interactive wizard to connect Anton to a MindsDB instance."""
-    import json
-
-    import httpx
-    from rich.prompt import Prompt
-
-    console.print()
-    console.print("[anton.cyan]Connect to MindsDB[/]")
-    console.print()
-
-    # 1. URL – default to last successful URL if available
-    default_url = "https://mdb.ai"
-    existing = workspace.get_secret("MINDS_CONNECTION")
-    if existing:
-        try:
-            prev_url = json.loads(existing).get("url")
-            if prev_url:
-                default_url = prev_url
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    url = Prompt.ask(
-        "MindsDB URL",
-        default=default_url,
-        console=console,
-    ).strip().rstrip("/")
-
-    # Auto-prepend https:// if no protocol given
-    if url and not url.startswith(("http://", "https://")):
-        url = f"https://{url}"
-
-    # 2. API key – reuse last key if user presses Enter
-    prev_api_key = workspace.get_secret("MINDS_API_KEY") or ""
-    if prev_api_key:
-        console.print("[anton.muted]Press Enter to keep existing API key[/]")
-
-    api_key = Prompt.ask(
-        "API key",
-        password=True,
-        console=console,
-    ).strip()
-
-    if not api_key and prev_api_key:
-        api_key = prev_api_key
-    elif not api_key:
-        console.print("[anton.error]No API key provided. Aborting.[/]")
-        console.print()
-        return
-
-    # 3. Test connection and fetch Minds
-    console.print()
-    console.print("[anton.muted]Testing connection...[/]")
-
-    verify_ssl = True
-    try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            resp = await client.get(
-                f"{url}/api/v1/minds/",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            resp.raise_for_status()
-            minds = resp.json()
-    except Exception as exc:
-        if "CERTIFICATE_VERIFY_FAILED" in str(exc) or "SSL" in type(exc).__name__:
-            console.print("[anton.warning]SSL certificate verification failed (self-signed cert?).[/]")
-            trust = Prompt.ask(
-                "Trust this server and skip SSL verification?",
-                choices=["y", "n"],
-                default="n",
-                console=console,
-            )
-            if trust == "y":
-                verify_ssl = False
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=30, follow_redirects=True, verify=False
-                    ) as client:
-                        resp = await client.get(
-                            f"{url}/api/v1/minds/",
-                            headers={"Authorization": f"Bearer {api_key}"},
-                        )
-                        resp.raise_for_status()
-                        minds = resp.json()
-                except Exception as exc2:
-                    console.print(f"[anton.error]Connection failed: {exc2}[/]")
-                    console.print()
-                    return
-            else:
-                console.print(f"[anton.error]Connection failed: {exc}[/]")
-                console.print()
-                return
-        else:
-            console.print(f"[anton.error]Connection failed: {exc}[/]")
-            console.print()
-            return
-
-    if not minds:
-        console.print("[anton.error]No Minds found on this server.[/]")
-        console.print()
-        return
-
-    console.print(f"[anton.success]Connected! Found {len(minds)} Mind(s).[/]")
-    console.print()
-
-    # 4. Pick a Mind
-    console.print("[anton.cyan]Available Minds:[/]")
-    for i, mind in enumerate(minds, 1):
-        name = mind.get("name", f"mind-{i}")
-        console.print(f"  [bold]{i}[/]  {name}")
-    console.print()
-
-    choices = [str(i) for i in range(1, len(minds) + 1)]
-    mind_choice = Prompt.ask(
-        "Select Mind",
-        choices=choices,
-        default="1",
-        console=console,
-    )
-    selected_mind = minds[int(mind_choice) - 1]
-    mind_name = selected_mind.get("name", "")
-    model_name = selected_mind.get("model_name", "")
-    provider = selected_mind.get("provider", "mindsdb")
-
-    # 5. Store connection info
-    connection = json.dumps({
-        "url": url,
-        "api_key": api_key,
-        "mind_name": mind_name,
-        "model_name": model_name,
-        "provider": provider,
-        "verify_ssl": verify_ssl,
-    })
-    workspace.set_secret("MINDS_CONNECTION", connection)
-    workspace.set_secret("MINDS_API_KEY", api_key)
-
-    console.print()
-    console.print(f"[anton.success]Connected to Mind '{mind_name}'.[/]")
-    console.print()
-
-
-async def _handle_disconnect(
-    console: Console,
-    workspace: Workspace,
-) -> None:
-    """Remove stored MindsDB connection."""
-    removed_conn = workspace.remove_secret("MINDS_CONNECTION")
-    removed_key = workspace.remove_secret("MINDS_API_KEY")
-
-    console.print()
-    if removed_conn or removed_key:
-        console.print("[anton.success]MindsDB connection removed.[/]")
-    else:
-        console.print("[anton.muted]No MindsDB connection found.[/]")
-    console.print()
-
-
 def _format_file_message(text: str, paths: list[Path], console: Console) -> str:
     """Rewrite user input to include file contents for detected paths."""
     parts: list[str] = []
@@ -929,8 +728,6 @@ def _print_slash_help(console: Console) -> None:
     console.print()
     console.print("[anton.cyan]Available commands:[/]")
     console.print("  [bold]/setup[/]       — Configure LLM provider, model, and API key")
-    console.print("  [bold]/connect[/]     — Connect to MindsDB (mdb.ai)")
-    console.print("  [bold]/disconnect[/]  — Remove MindsDB connection")
     console.print("  [bold]/paste[/]       — Attach clipboard image to your message")
     console.print("  [bold]/help[/]        — Show this help message")
     console.print("  [bold]exit[/]         — Quit the chat")
@@ -1136,18 +933,6 @@ async def _chat_loop(console: Console, settings: AntonSettings) -> None:
                         console, settings, workspace, state,
                         self_awareness, session,
                     )
-                    continue
-                elif cmd == "/connect":
-                    await _handle_connect(console, workspace)
-                    # Reset running scratchpads so they pick up the new
-                    # MINDS_CONNECTION env var and inject minds_client.
-                    for pad_name in session._scratchpads.list_pads():
-                        pad = session._scratchpads._pads.get(pad_name)
-                        if pad is not None:
-                            await pad.reset()
-                    continue
-                elif cmd == "/disconnect":
-                    await _handle_disconnect(console, workspace)
                     continue
                 elif cmd == "/help":
                     _print_slash_help(console)
