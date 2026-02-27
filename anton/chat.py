@@ -508,7 +508,7 @@ class ChatSession:
             for tc in llm_response.tool_calls:
                 # Log tool call to episodic memory
                 if self._episodic is not None:
-                    tc_desc = str(tc.input)[:500]
+                    tc_desc = str(tc.input)[:2000]
                     self._episodic.log_turn(
                         self._turn_count + 1, "tool_call", tc_desc,
                         tool=tc.name,

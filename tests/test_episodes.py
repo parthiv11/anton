@@ -160,11 +160,11 @@ class TestLogTurn:
 
     def test_tool_call_truncation(self, em: EpisodicMemory, episodes_dir: Path):
         sid = em.start_session()
-        long_content = "x" * 1000
+        long_content = "x" * 5000
         em.log_turn(1, "tool_call", long_content)
         path = episodes_dir / f"{sid}.jsonl"
         data = json.loads(path.read_text().strip())
-        assert len(data["content"]) == 500
+        assert len(data["content"]) == 2000
 
     def test_tool_result_truncation(self, em: EpisodicMemory, episodes_dir: Path):
         sid = em.start_session()

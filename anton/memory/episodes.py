@@ -24,7 +24,7 @@ class Episode:
     meta: dict = field(default_factory=dict)
 
 
-_MAX_TOOL_INPUT = 500
+_MAX_TOOL_INPUT = 2000
 _MAX_TOOL_RESULT = 2000
 
 
