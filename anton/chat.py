@@ -682,6 +682,126 @@ def _rebuild_session(
     )
 
 
+def _handle_memory(
+    console: Console,
+    settings: AntonSettings,
+    workspace: Workspace,
+    cortex,
+) -> None:
+    """Show memory status and optionally change the memory mode."""
+    from rich.prompt import Prompt
+
+    console.print()
+    console.print("[anton.cyan]Memory Status[/]")
+    console.print()
+
+    # --- Current mode ---
+    mode_labels = {
+        "autopilot": "Autopilot — Anton decides what to remember",
+        "copilot": "Co-pilot — save obvious, confirm ambiguous",
+        "manual": "Manual — always confirm before saving",
+        "off": "Off — never save (still reads existing)",
+    }
+    mode_label = mode_labels.get(settings.memory_mode, settings.memory_mode)
+    console.print(f"  Mode:  [bold]{mode_label}[/]")
+    console.print()
+
+    if cortex is None:
+        console.print("  [anton.warning]Memory system not initialized.[/]")
+        console.print()
+        return
+
+    # --- Global scope ---
+    global_hc = cortex.global_hc
+    g_identity = global_hc.recall_identity()
+    g_rules = global_hc.recall_rules()
+    g_lessons_raw = global_hc._read_full_lessons()
+    g_rule_count = sum(1 for ln in g_rules.splitlines() if ln.strip().startswith("- ")) if g_rules else 0
+    g_lesson_count = sum(1 for ln in g_lessons_raw.splitlines() if ln.strip().startswith("- ")) if g_lessons_raw else 0
+    g_topics: list[str] = []
+    if global_hc._topics_dir.is_dir():
+        g_topics = [p.stem for p in sorted(global_hc._topics_dir.iterdir()) if p.suffix == ".md"]
+
+    console.print("  [anton.cyan]Global[/] [dim](~/.anton/memory/)[/]")
+    if g_identity:
+        # Show first few profile entries
+        entries = [ln.strip()[2:] for ln in g_identity.splitlines() if ln.strip().startswith("- ")]
+        if entries:
+            console.print(f"    Identity:  {', '.join(entries[:3])}" + (" ..." if len(entries) > 3 else ""))
+        else:
+            console.print("    Identity:  [dim](set)[/]")
+    else:
+        console.print("    Identity:  [dim](empty)[/]")
+    console.print(f"    Rules:     {g_rule_count}")
+    console.print(f"    Lessons:   {g_lesson_count}")
+    if g_topics:
+        console.print(f"    Topics:    {', '.join(g_topics)}")
+    else:
+        console.print("    Topics:    [dim](none)[/]")
+    console.print()
+
+    # --- Project scope ---
+    project_hc = cortex.project_hc
+    p_rules = project_hc.recall_rules()
+    p_lessons_raw = project_hc._read_full_lessons()
+    p_rule_count = sum(1 for ln in p_rules.splitlines() if ln.strip().startswith("- ")) if p_rules else 0
+    p_lesson_count = sum(1 for ln in p_lessons_raw.splitlines() if ln.strip().startswith("- ")) if p_lessons_raw else 0
+    p_topics: list[str] = []
+    if project_hc._topics_dir.is_dir():
+        p_topics = [p.stem for p in sorted(project_hc._topics_dir.iterdir()) if p.suffix == ".md"]
+
+    console.print(f"  [anton.cyan]Project[/] [dim]({project_hc._dir})[/]")
+    console.print(f"    Rules:     {p_rule_count}")
+    console.print(f"    Lessons:   {p_lesson_count}")
+    if p_topics:
+        console.print(f"    Topics:    {', '.join(p_topics)}")
+    else:
+        console.print("    Topics:    [dim](none)[/]")
+    console.print()
+
+    total = g_rule_count + g_lesson_count + p_rule_count + p_lesson_count
+    console.print(f"  Total entries: [bold]{total}[/]")
+    if cortex.needs_compaction():
+        console.print("  [anton.warning]Compaction needed (>50 entries in a scope)[/]")
+    console.print()
+
+    # --- Offer to change mode ---
+    change = Prompt.ask(
+        "Change memory mode? (y/n)",
+        choices=["y", "n"],
+        default="n",
+        console=console,
+    )
+    if change == "y":
+        console.print()
+        console.print("[anton.cyan]Memory modes:[/]")
+        console.print(r"  [bold]1[/]  Autopilot — Anton decides what to remember       [dim]\[high NE][/]")
+        console.print(r"  [bold]2[/]  Co-pilot — save obvious, confirm ambiguous        [dim]\[recommended][/]")
+        console.print(r"  [bold]3[/]  Manual — always confirm before saving             [dim]\[low NE][/]")
+        console.print(r"  [bold]4[/]  Off — never save memory (still reads existing)    [dim]\[suppressed][/]")
+        console.print()
+
+        mode_map = {"1": "autopilot", "2": "copilot", "3": "manual", "4": "off"}
+        current_mode_num = {"autopilot": "1", "copilot": "2", "manual": "3", "off": "4"}.get(
+            settings.memory_mode, "2"
+        )
+        mode_choice = Prompt.ask(
+            "Memory mode",
+            choices=["1", "2", "3", "4"],
+            default=current_mode_num,
+            console=console,
+        )
+        memory_mode = mode_map[mode_choice]
+        settings.memory_mode = memory_mode
+        workspace.set_secret("ANTON_MEMORY_MODE", memory_mode)
+        cortex.mode = memory_mode
+
+        console.print()
+        console.print(f"[anton.success]Memory mode set to: {memory_mode}[/]")
+
+    console.print()
+
+
 async def _handle_setup(
     console: Console,
     settings: AntonSettings,
@@ -976,6 +1096,7 @@ def _print_slash_help(console: Console) -> None:
     console.print()
     console.print("[anton.cyan]Available commands:[/]")
     console.print("  [bold]/setup[/]       — Configure LLM provider, model, and API key")
+    console.print("  [bold]/memory[/]      — Show memory status and change memory mode")
     console.print("  [bold]/paste[/]       — Attach clipboard image to your message")
     console.print("  [bold]/help[/]        — Show this help message")
     console.print("  [bold]exit[/]         — Quit the chat")
@@ -1258,6 +1379,9 @@ async def _chat_loop(console: Console, settings: AntonSettings) -> None:
                         console, settings, workspace, state,
                         self_awareness, cortex, session,
                     )
+                    continue
+                elif cmd == "/memory":
+                    _handle_memory(console, settings, workspace, cortex)
                     continue
                 elif cmd == "/help":
                     _print_slash_help(console)

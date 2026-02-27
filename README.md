@@ -87,11 +87,11 @@ You can always ask Anton to explain what it did. Ask it to dump its scratchpad a
 
 ## Memory System
 
-Anton has a brain-inspired long-term memory architecture that learns from every session. It remembers your identity, behavioral rules (always/never/when), semantic lessons, and domain expertise — stored as human-readable markdown at two scopes (global and per-project). After scratchpad sessions, it automatically extracts lessons from errors and long runs, like hippocampal replay during sleep.
+Anton remembers your identity, behavioral rules (always/never/when), semantic lessons, and domain expertise — stored as human-readable markdown at two scopes (global and per-project). After scratchpad sessions, it automatically extracts lessons from errors and long runs.
 
 Configure the encoding mode via `/setup` or `ANTON_MEMORY_MODE` (autopilot / copilot / manual / off). Default: **copilot** — auto-saves high-confidence memories, confirms ambiguous ones.
 
-For the full architecture, brain-to-code mapping, file formats, and developer guide, see **[anton/README.md](anton/README.md)**.
+For the full architecture, file formats, and developer guide, see **[anton/README.md](anton/README.md)**.
 
 ---
 

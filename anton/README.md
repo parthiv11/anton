@@ -36,7 +36,7 @@ Anton has a brain-inspired long-term memory architecture. Every module is named 
     └──────────────────────────────────────────────┘
 ```
 
-## Brain-to-Code Mapping
+## Brain Mapping
 
 | Brain Structure | Module | What It Does |
 |---|---|---|
