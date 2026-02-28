@@ -55,53 +55,16 @@ including dates and credible sources. Use only publicly accessible
 information and scrape the web as needed, assuming no API keys are available.
 ```
 
-## How it works
-
-Anton collaborates with people to solve problems, by self-evolving the skills and tools it needs, operating as follows.
-
-
-**Chat + Scratchpad** — For most tasks, Anton works directly in conversation. It thinks through the problem, writes and runs Python in a persistent scratchpad (variables, imports, and data survive across steps), installs packages as needed, and iterates until it has your answer.
-
-```
-Task → Memory Recall → Planning → Scratchpad Building (if needed) → Execution
-```
-
-### What is a Scratchpad?
-
-Anton's scratchpads are notebook-style environments it drives programmatically.
-
-When you ask Anton for something, it writes and executes Python in the scratchpad. This makes Anton particularly great at **data analysis tasks**: counting, scraping, parsing, transforming, aggregating, calling API's and exploring datasets with real computation instead of LLM guesswork.
-
-What the scratchpad handles well:
-- **Data analysis** — Load a CSV, filter rows, compute aggregates, pivot tables, plot distributions
-- **Text processing** — Parse logs, extract patterns, count tokens, transform formats
-- **Math and counting** — Character counts, statistical calculations, combinatorics
-- **Multi-step exploration** — Build up understanding incrementally, inspect intermediate results
-- **LLM-powered computation** — Call `get_llm()` inside scratchpad code for AI-assisted analysis (classification, extraction, summarization) over your data
 
 ### Explainable by default
 
 You can always ask Anton to explain what it did. Ask it to dump its scratchpad and you get a full notebook-style breakdown: every cell of code it ran, the outputs, and errors — so you can follow its reasoning step by step.
 
 ---
+## How it works
 
-## Memory System
+For the full architecture of Anton, file formats, and developer guide, see **[anton/README.md](anton/README.md)**.
 
-Anton has two complementary memory systems:
-
-**Semantic memory** — Rules, lessons, identity, and domain expertise stored as human-readable markdown at two scopes (global and per-project). After scratchpad sessions, it automatically extracts lessons from errors and long runs.
-
-**Episodic memory** — A complete, timestamped, searchable archive of every conversation. Stored as JSONL in `.anton/episodes/`, one file per session. Anton can search past conversations using its `recall` tool when you ask about previous sessions or past work.
-
-Configure memory via `/setup` > Memory, or set environment variables:
-- `ANTON_MEMORY_MODE` — Semantic memory encoding mode (autopilot / copilot / off). Default: **autopilot**.
-- `ANTON_EPISODIC_MEMORY` — Episodic memory archive (true / false). Default: **true**.
-
-Use `/memory` to view a read-only dashboard of both memory systems.
-
-For the full architecture, file formats, and developer guide, see **[anton/README.md](anton/README.md)**.
-
----
 
 ## Workspace
 
@@ -126,6 +89,21 @@ ANTON_EPISODIC_MEMORY    # Episodic memory archive (default: true)
 ```
 
 Env loading order: `cwd/.env` → `.anton/.env` → `~/.anton/.env`
+
+### Memory System that you can explore
+
+Anton has two complementary memory systems that are meant to be human readable:
+
+**Semantic memory** — Rules, lessons, identity, and domain expertise stored as human-readable markdown at two scopes (global and per-project). After scratchpad sessions, it automatically extracts lessons from errors and long runs.
+
+**Episodic memory** — A complete, timestamped, searchable archive of every conversation. Stored as JSONL in `.anton/episodes/`, one file per session. Anton can search past conversations using its `recall` tool when you ask about previous sessions or past work.
+
+Configure memory via `/setup` > Memory, or set environment variables:
+- `ANTON_MEMORY_MODE` — Semantic memory encoding mode (autopilot / copilot / off). Default: **autopilot**.
+- `ANTON_EPISODIC_MEMORY` — Episodic memory archive (true / false). Default: **true**.
+
+Use `/memory` to view a read-only dashboard of both memory systems.
+
 
 ## Manual install
 
