@@ -40,18 +40,7 @@ any other information that might be useful. Give me a complete dashboard.
 What happens next is the interesting part. Anton doesn't have any particular skill to begin with. It figures it out live: scrapes live prices, writes scratchpad code on the fly, crunches the numbers, and builds you a full dashboard — all in one conversation, with no setup.
 That's the point: you describe a problem in plain language, and Anton assembles the toolchain, writes the code, and delivers the result.
 
-### Another example
-
-You don't even need to specify a specific website. For example, whatup with crypto? Try asking Anton this:
-
-```
-Analyze how Bitcoin has evolved over the past 12 months by summarizing the
-overall price trend and highlighting major dips and gains (e.g., moves
-greater than ~5–10%). For each significant movement, find and briefly
-explain relevant news or events that may have influenced the price,
-including dates and credible sources. Use only publicly accessible
-information and scrape the web as needed, assuming no API keys are available.
-```
+<img width="800"  alt="image" src="https://github.com/user-attachments/assets/39ec8b3b-65e8-4e23-8861-c649969d4e1c" />
 
 
 ### Explainable by default
