@@ -237,6 +237,33 @@ class ChatSession:
         if split < 2:
             return
 
+        # Walk split backward to avoid breaking tool_use / tool_result pairs.
+        # A user message containing tool_result blocks must stay with the
+        # preceding assistant message that contains the matching tool_use.
+        while split > 1:
+            msg = self._history[split]
+            if msg.get("role") != "user":
+                break
+            content = msg.get("content")
+            if not isinstance(content, list):
+                break
+            has_tool_result = any(
+                isinstance(b, dict) and b.get("type") == "tool_result"
+                for b in content
+            )
+            if not has_tool_result:
+                break
+            # This user message has tool_results — keep it (and its paired
+            # assistant message) in the recent portion.
+            split -= 1
+            # Also pull back over the preceding assistant message so the
+            # pair stays together.
+            if split > 1 and self._history[split].get("role") == "assistant":
+                split -= 1
+
+        if split < 2:
+            return
+
         old_turns = self._history[:split]
         recent_turns = self._history[split:]
 
@@ -284,7 +311,13 @@ class ChatSession:
             "role": "user",
             "content": f"[Context summary of earlier conversation]\n{summary}",
         }
-        self._history = [summary_msg] + recent_turns
+
+        # If the recent portion starts with a user message, insert a minimal
+        # assistant separator to avoid consecutive user messages (API error).
+        if recent_turns and recent_turns[0].get("role") == "user":
+            self._history = [summary_msg, {"role": "assistant", "content": "Understood."}, *recent_turns]
+        else:
+            self._history = [summary_msg] + recent_turns
 
     def _compact_scratchpads(self) -> bool:
         """Compact all active scratchpads. Returns True if any were compacted."""
