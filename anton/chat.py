@@ -1287,13 +1287,19 @@ async def _handle_setup_minds(
     datasources = None
     try:
         datasources = _minds_list_datasources(minds_url, api_key, verify=ssl_verify)
-    except urllib.error.URLError as e:
-        if isinstance(e.reason, ssl.SSLCertVerificationError):
-            console.print("[anton.warning]This server uses a self-signed or untrusted certificate.[/]")
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        is_ssl = isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError)
+        # On some platforms, invalid certs surface as HTTP errors instead of SSL errors.
+        is_https_error = not is_ssl and minds_url.startswith("https://") and ssl_verify
+        if is_ssl or is_https_error:
+            if is_ssl:
+                console.print("[anton.warning]This server uses a self-signed or untrusted certificate.[/]")
+            else:
+                console.print(f"[anton.warning]Connection failed ({e}). This may be a certificate issue.[/]")
             trust = Prompt.ask(
-                "Trust this certificate anyway? (y/n)",
+                "Retry without SSL verification? (y/n)",
                 choices=["y", "n"],
-                default="n",
+                default="y",
                 console=console,
             )
             if trust == "y":
