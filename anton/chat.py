@@ -1249,6 +1249,7 @@ def _minds_list_minds(base_url: str, api_key: str, verify: bool = True) -> list[
     req = urllib.request.Request(url, method="GET")
     req.add_header("Authorization", f"Bearer {api_key}")
     req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "anton/1.0")
 
     ctx = None
     if not verify:
@@ -1361,9 +1362,10 @@ async def _handle_connect(
 
     ssl_verify = settings.minds_ssl_verify
 
-    # --- Try to connect (with retry on auth failure) ---
+    # --- Try to connect (with retry on auth/SSL failure) ---
     minds = None
-    for _attempt in range(2):
+    max_attempts = 3
+    for _attempt in range(max_attempts):
         console.print()
         console.print(f"[anton.muted]Connecting to {minds_url}...[/]")
         try:
@@ -1371,7 +1373,13 @@ async def _handle_connect(
             break
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
-                console.print("[anton.error]Authentication failed — check your API key.[/]")
+                console.print("[anton.error]Authentication failed — check your URL and API key.[/]")
+                if _attempt >= max_attempts - 1:
+                    console.print("[anton.muted]Too many failed attempts. Aborted.[/]")
+                    console.print()
+                    return session
+                minds_url = Prompt.ask("Minds server URL", default=minds_url, console=console)
+                minds_url = _normalize_minds_url(minds_url)
                 api_key = Prompt.ask("API key", console=console, password=True)
                 if not api_key or not api_key.strip():
                     console.print("[anton.muted]Aborted.[/]")
@@ -1379,7 +1387,7 @@ async def _handle_connect(
                     return session
                 api_key = api_key.strip()
                 continue
-            console.print(f"[anton.error]Connection failed: {e}[/]")
+            console.print(f"[anton.error]Connection failed (HTTP {e.code}): {e.reason}[/]")
             console.print()
             return session
         except urllib.error.URLError as e:
