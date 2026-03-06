@@ -195,4 +195,5 @@ class Consolidator:
                 source="consolidation",
             ))
 
-        return engrams
+        # Cap extraction to prevent memory bloat from single sessions
+        return engrams[:5]

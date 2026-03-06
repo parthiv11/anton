@@ -149,13 +149,13 @@ class ChatSession:
         if self._history_store and self._session_id:
             self._history_store.save(self._session_id, self._history)
 
-    def _build_system_prompt(self) -> str:
+    async def _build_system_prompt(self, user_message: str = "") -> str:
         prompt = CHAT_SYSTEM_PROMPT.format(
             runtime_context=self._runtime_context,
         )
         # Inject memory context (replaces old self_awareness)
         if self._cortex is not None:
-            memory_section = self._cortex.build_memory_context()
+            memory_section = await self._cortex.build_memory_context(user_message)
             if memory_section:
                 prompt += memory_section
         elif self._self_awareness is not None:
@@ -331,7 +331,8 @@ class ChatSession:
     async def turn(self, user_input: str | list[dict]) -> str:
         self._history.append({"role": "user", "content": user_input})
 
-        system = self._build_system_prompt()
+        user_msg_str = user_input if isinstance(user_input, str) else ""
+        system = await self._build_system_prompt(user_msg_str)
         tools = self._build_tools()
 
         try:
@@ -434,6 +435,11 @@ class ChatSession:
         # Text-only response
         reply = response.content or ""
         self._history.append({"role": "assistant", "content": reply})
+
+        # Periodic memory vacuum (Systems Consolidation)
+        if self._cortex is not None and self._cortex.mode != "off":
+            self._cortex.maybe_vacuum()
+
         return reply
 
     async def turn_stream(self, user_input: str | list[dict]) -> AsyncIterator[StreamEvent]:
@@ -445,8 +451,9 @@ class ChatSession:
             content = user_input if isinstance(user_input, str) else str(user_input)[:2000]
             self._episodic.log_turn(self._turn_count + 1, "user", content)
 
+        user_msg_str = user_input if isinstance(user_input, str) else ""
         assistant_text_parts: list[str] = []
-        async for event in self._stream_and_handle_tools():
+        async for event in self._stream_and_handle_tools(user_msg_str):
             if isinstance(event, StreamTextDelta):
                 assistant_text_parts.append(event.text)
             yield event
@@ -460,17 +467,15 @@ class ChatSession:
         # Identity extraction (Default Mode Network — every 5 turns)
         self._turn_count += 1
         self._persist_history()
-        if (
-            self._turn_count % 5 == 0
-            and self._cortex is not None
-            and self._cortex.mode != "off"
-            and isinstance(user_input, str)
-        ):
-            asyncio.create_task(self._cortex.maybe_update_identity(user_input))
+        if self._cortex is not None and self._cortex.mode != "off":
+            if self._turn_count % 5 == 0 and isinstance(user_input, str):
+                asyncio.create_task(self._cortex.maybe_update_identity(user_input))
+            # Periodic memory vacuum (Systems Consolidation)
+            self._cortex.maybe_vacuum()
 
-    async def _stream_and_handle_tools(self) -> AsyncIterator[StreamEvent]:
+    async def _stream_and_handle_tools(self, user_message: str = "") -> AsyncIterator[StreamEvent]:
         """Stream one LLM call, handle tool loops, yield all events."""
-        system = self._build_system_prompt()
+        system = await self._build_system_prompt(user_message)
         tools = self._build_tools()
 
         response: StreamComplete | None = None
