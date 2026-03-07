@@ -573,6 +573,12 @@ class ChatSession:
                             result_text = prep
                         else:
                             pad, code, description, estimated_time, estimated_seconds = prep
+                            # Signal intent + ETA before execution begins
+                            yield StreamTaskProgress(
+                                phase="scratchpad_start",
+                                message=description or "Running code",
+                                eta_seconds=estimated_seconds,
+                            )
                             from anton.scratchpad import Cell
                             cell = None
                             async for item in pad.execute_streaming(
@@ -627,6 +633,9 @@ class ChatSession:
                 })
 
             self._history.append({"role": "user", "content": tool_results})
+
+            # Signal that tools are done and LLM is now analyzing
+            yield StreamTaskProgress(phase="analyzing", message="Analyzing results...")
 
             # Stream follow-up
             response = None
