@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 import sys
 import time
@@ -143,6 +144,9 @@ def _animate_banner(console: Console) -> None:
 
 
 def render_banner(console: Console, *, animate: bool = True) -> None:
+    if os.environ.get("ANTON_SUPPRESS_BANNER"):
+        return
+
     tagline = pick_tagline()
 
     # Animate only on interactive terminals
