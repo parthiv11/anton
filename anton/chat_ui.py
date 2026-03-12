@@ -165,11 +165,6 @@ class StreamDisplay:
     def _start_spinner(self, text: str | None = None) -> None:
         """Start or restart the tiny spinner Live."""
         self._stop_spinner()
-        msg = text or self._thinking_msg
-        spinner = Spinner("dots", text=Text(f" {msg}", style="anton.muted"))
-        footer = self._build_footer()
-        display = Text()
-        display.append_to(spinner)  # type: ignore[union-attr]
         self._live = Live(
             self._build_spinner_display(),
             console=self._console,
