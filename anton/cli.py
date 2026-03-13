@@ -12,6 +12,15 @@ from rich.table import Table
 from anton import __version__
 
 
+def _reexec() -> None:
+    """Re-execute the current process from scratch using the original binary."""
+    import shutil
+
+    # Prefer the installed `anton` binary so the uv tool wrapper re-runs correctly.
+    binary = shutil.which("anton") or sys.argv[0]
+    os.execv(binary, [binary] + sys.argv[1:])
+
+
 # ---------------------------------------------------------------------------
 # Dependency checking — runs before anything that needs the heavy imports
 # ---------------------------------------------------------------------------
@@ -101,7 +110,7 @@ def _ensure_dependencies(console: Console) -> None:
             )
             if result.returncode == 0:
                 console.print("[anton.success]  Dependencies installed.[/]")
-                os.execv(sys.executable, [sys.executable, "-m", "anton"] + sys.argv[1:])
+                _reexec()
             else:
                 console.print(f"[anton.error]  Install failed:[/]")
                 console.print(result.stderr.decode() if result.stderr else result.stdout.decode())
@@ -199,7 +208,7 @@ def main(
     from anton.updater import check_and_update
     if check_and_update(console, settings):
         # Re-exec with the freshly installed code so no old modules remain in memory.
-        os.execv(sys.executable, [sys.executable, "-m", "anton"] + sys.argv[1:])
+        _reexec()
 
     ctx.ensure_object(dict)
     ctx.obj["settings"] = settings

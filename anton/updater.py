@@ -34,14 +34,16 @@ def check_and_update(console, settings) -> bool:
     t.start()
     t.join(timeout=_TOTAL_TIMEOUT)
 
+    if t.is_alive():
+        # Deadline exceeded — the upgrade may still be running in the background.
+        # Discard the result so we never restart with partially-replaced files on disk.
+        return False
+
     # Print messages collected by the worker (if it finished)
     for msg in result.get("messages", []):
         console.print(msg)
 
-    if "new_version" in result:
-        return True
-
-    return False
+    return "new_version" in result
 
 
 def _check_and_update(result: dict, settings) -> None:
@@ -89,7 +91,7 @@ def _check_and_update(result: dict, settings) -> None:
         proc = subprocess.run(
             ["uv", "tool", "upgrade", "anton"],
             capture_output=True,
-            timeout=15,
+            timeout=_TOTAL_TIMEOUT,
         )
     except Exception:
         messages.append("  [dim]Update failed, continuing...[/]")
