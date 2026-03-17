@@ -739,7 +739,16 @@ class ChatSession:
                 # Consolidation still runs after diagnosis
                 break
 
-            # Ask the LLM to self-assess completion
+            # Ask the LLM to self-assess completion.
+            # Use a copy of history with a trailing user message so models
+            # that don't support assistant-prefill won't reject the request.
+            verify_messages = list(self._history) + [{
+                "role": "user",
+                "content": (
+                    "SYSTEM: Evaluate whether the task the user originally requested "
+                    "has been fully completed based on the conversation above."
+                ),
+            }]
             verification = await self._llm.plan(
                 system=(
                     "You are a task-completion verifier. Given the conversation, determine "
@@ -755,7 +764,7 @@ class ChatSession:
                     "that is INCOMPLETE, not COMPLETE. But if the user asked a question "
                     "and the assistant answered it, that is COMPLETE even without tool use."
                 ),
-                messages=self._history,
+                messages=verify_messages,
                 max_tokens=256,
             )
 
