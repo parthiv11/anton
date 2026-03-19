@@ -4,10 +4,6 @@ Anton reads this file when connecting data sources. For each source, the YAML
 block defines the fields Python collects. The prose below describes auth flows,
 common errors, and how to handle OAuth2 — Anton handles those using the scratchpad.
 
-When a connection is saved, write a brief topic file to
-`.anton/memory/topics/datasource-{name}.md` so future sessions know
-how to query this source.
-
 Credentials are injected as `DS_<FIELD_UPPER>` environment variables
 before any scratchpad code runs. Never embed raw values in code strings.
 
@@ -48,9 +44,7 @@ Common errors: "password authentication failed" → wrong password or user.
 engine: hubspot
 display_name: HubSpot
 pip: hubspot-api-client
-name_from: []
 auth_method: choice
-fields: []
 auth_methods:
   - name: pat
     display: "Private App Token (recommended)"

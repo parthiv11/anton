@@ -2182,18 +2182,259 @@ def _human_size(nbytes: int) -> str:
     return f"{nbytes:.1f}TB"
 
 
+async def _handle_connect_datasource(
+    console: Console,
+    scratchpads: ScratchpadManager,
+    session: "ChatSession",
+) -> "ChatSession":
+    """Interactive flow for connecting a new data source to the Local Vault."""
+    from rich.prompt import Prompt
+
+    from anton.data_vault import DataVault
+    from anton.datasource_registry import DatasourceRegistry
+
+    vault = DataVault()
+    registry = DatasourceRegistry()
+
+    # ── Step 1: ask which engine ──────────────────────────────────
+    console.print()
+    engine_names = ", ".join(e.display_name for e in registry.all_engines())
+    answer = Prompt.ask(
+        f"[anton.cyan](anton)[/] Which data source would you like to connect?\n"
+        f"        [anton.muted](e.g. {engine_names})[/]\n",
+        console=console,
+    )
+    engine_def = registry.find_by_name(answer.strip())
+    if engine_def is None:
+        console.print(f"[anton.warning]Unknown data source '{answer}'. Available:[/]")
+        for e in registry.all_engines():
+            console.print(f"  • {e.display_name}")
+        console.print()
+        return session
+
+    # ── Step 2a: auth method choice (if engine requires it) ───────
+    active_fields = engine_def.fields
+    if engine_def.auth_method == "choice" and engine_def.auth_methods:
+        console.print()
+        console.print(
+            f"[anton.cyan](anton)[/] How would you like to authenticate with "
+            f"[bold]{engine_def.display_name}[/]?"
+        )
+        console.print()
+        for i, am in enumerate(engine_def.auth_methods, 1):
+            console.print(f"        {i}. {am.display}")
+        console.print()
+        choice_str = Prompt.ask(
+            "[anton.cyan](anton)[/] Enter a number",
+            console=console,
+        ).strip()
+        try:
+            choice_idx = int(choice_str) - 1
+            chosen_method = engine_def.auth_methods[choice_idx]
+        except (ValueError, IndexError):
+            console.print("[anton.warning]Invalid choice. Aborting.[/]")
+            console.print()
+            return session
+        active_fields = chosen_method.fields
+
+    # ── Step 2b: show fields ──────────────────────────────────────
+    required_fields = [f for f in active_fields if f.required]
+    optional_fields = [f for f in active_fields if not f.required]
+
+    console.print()
+    console.print(
+        f"[anton.cyan](anton)[/] To connect [bold]{engine_def.display_name}[/], "
+        "I'll need the following:"
+    )
+    console.print()
+
+    if required_fields:
+        console.print("        [bold]Required[/]      " + "─" * 39)
+        for f in required_fields:
+            console.print(f"        • [bold]{f.name:<12}[/] [anton.muted]— {f.description}[/]")
+
+    if optional_fields:
+        console.print()
+        console.print("        [bold]Optional[/]      " + "─" * 39)
+        for f in optional_fields:
+            console.print(f"        • [bold]{f.name:<12}[/] [anton.muted]— {f.description}[/]")
+
+    console.print()
+
+    # ── Step 3: determine collection mode ────────────────────────
+    mode_answer = Prompt.ask(
+        "[anton.cyan](anton)[/] Do you have these available? [y/n/<list params>]",
+        console=console,
+    ).strip().lower()
+
+    if mode_answer == "n":
+        console.print()
+        console.print(
+            "[anton.cyan](anton)[/] No problem. Which parameters do you have? "
+            "I'll save a partial connection now, and you can fill in the rest later "
+            "with [bold]/edit-data-source[/]."
+        )
+        console.print()
+        console.print("       Provide what you have (press enter to skip any field):")
+        console.print()
+        fields_to_collect = active_fields
+        partial = True
+    elif mode_answer == "y":
+        fields_to_collect = active_fields
+        partial = False
+    else:
+        # User gave a comma-separated list of param names — filter to those fields.
+        # If nothing matches (e.g. they typed a credential value by mistake), fall
+        # back to collecting all fields.
+        requested = {n.strip().lower() for n in mode_answer.split(",")}
+        matched = [f for f in active_fields if f.name.lower() in requested]
+        fields_to_collect = matched if matched else active_fields
+        partial = False
+
+    # ── Step 4: collect credentials ──────────────────────────────
+    console.print()
+    credentials: dict[str, str] = {}
+
+    for f in fields_to_collect:
+        prompt_label = f"[anton.cyan](anton)[/] {f.name}"
+        if not f.required or partial:
+            prompt_label += " [anton.muted](optional, press enter to skip)[/]"
+
+        if f.secret:
+            value = Prompt.ask(prompt_label, password=True, console=console, default="")
+        elif f.default:
+            value = Prompt.ask(
+                f"{prompt_label} [anton.muted][{f.default}][/]",
+                console=console,
+                default=f.default,
+            )
+        else:
+            value = Prompt.ask(prompt_label, console=console, default="")
+
+        if value:
+            credentials[f.name] = value
+
+    # ── Partial save ─────────────────────────────────────────────
+    if partial:
+        n = vault.next_connection_number(engine_def.engine)
+        auto_name = str(n)
+        vault.save(engine_def.engine, auto_name, credentials)
+        slug = f"{engine_def.engine}-{auto_name}"
+        console.print()
+        console.print(
+            f"[anton.muted]Partial connection saved to Local Vault as "
+            f"[bold]\"{slug}\"[/bold]. "
+            f"Run [bold]/edit-data-source {slug}[/bold] to complete it when you're ready.[/]"
+        )
+        console.print()
+        return session
+
+    # ── Step 5: test connection ───────────────────────────────────
+    if engine_def.test_snippet:
+        while True:
+            console.print()
+            console.print("[anton.cyan](anton)[/] Got it. Testing connection…")
+
+            # Temporarily inject DS_* into os.environ (test before committing to vault)
+            import os as _os
+            for key, value in credentials.items():
+                _os.environ[f"DS_{key.upper()}"] = value
+
+            try:
+                pad = await scratchpads.get_or_create("__datasource_test__")
+                await pad.reset()  # fresh subprocess inherits current os.environ
+
+                if engine_def.pip:
+                    await pad.install_packages([engine_def.pip])
+
+                cell = await pad.execute(engine_def.test_snippet)
+            finally:
+                # Always clean up DS_* regardless of outcome
+                ds_keys = [k for k in _os.environ if k.startswith("DS_")]
+                for k in ds_keys:
+                    del _os.environ[k]
+
+            if cell.error or (cell.stdout.strip() != "ok" and cell.stderr.strip()):
+                error_text = cell.error or cell.stderr.strip() or cell.stdout.strip()
+                # Show first meaningful line of the error
+                first_line = next(
+                    (ln for ln in error_text.splitlines() if ln.strip()), error_text
+                )
+                console.print()
+                console.print("[anton.warning](anton)[/] ✗ Connection failed.")
+                console.print()
+                console.print(f"        Error: {first_line}")
+                console.print()
+
+                retry = Prompt.ask(
+                    "[anton.cyan](anton)[/] Would you like to re-enter your credentials? [y/n]",
+                    console=console,
+                    default="n",
+                ).strip().lower()
+
+                if retry != "y":
+                    return session
+
+                # Re-collect secret fields only
+                console.print()
+                for f in engine_def.fields:
+                    if not f.secret:
+                        continue
+                    value = Prompt.ask(
+                        f"[anton.cyan](anton)[/] {f.name}",
+                        password=True,
+                        console=console,
+                        default="",
+                    )
+                    if value:
+                        credentials[f.name] = value
+                continue  # retry test
+
+            # Success
+            console.print("[anton.success]        ✓ Connected successfully![/]")
+            break
+
+    # ── Step 6: save + write topic ───────────────────────────────
+    conn_name = registry.derive_name(engine_def, credentials)
+    if not conn_name or conn_name == engine_def.engine:
+        # Fall back to auto-number if name_from didn't resolve
+        n = vault.next_connection_number(engine_def.engine)
+        conn_name = str(n)
+
+    vault.save(engine_def.engine, conn_name, credentials)
+    slug = f"{engine_def.engine}-{conn_name}"
+    console.print(
+        f"        Credentials saved to Local Vault as [bold]\"{slug}\"[/bold]."
+    )
+
+    console.print()
+    console.print("[anton.muted]        You can now ask me questions about your data.[/]")
+    console.print()
+
+    # Inject a brief assistant message so the LLM is aware of the new connection
+    session._history.append({
+        "role": "assistant",
+        "content": (
+            f"I've saved a {engine_def.display_name} connection named \"{slug}\" "
+            f"to the Local Vault. I can now query this data source when needed."
+        ),
+    })
+    return session
+
+
 def _print_slash_help(console: Console) -> None:
     """Print available slash commands."""
     console.print()
     console.print("[anton.cyan]Available commands:[/]")
-    console.print("  [bold]/connect[/]           — Connect to a Minds server and select a mind")
-    console.print("  [bold]/data-connections[/]  — View and manage stored keys and connections")
-    console.print("  [bold]/setup[/]             — Configure models or memory settings")
-    console.print("  [bold]/memory[/]            — Show memory status dashboard")
-    console.print("  [bold]/paste[/]             — Attach clipboard image to your message")
-    console.print("  [bold]/resume[/]            — Resume a previous chat session")
-    console.print("  [bold]/help[/]              — Show this help message")
-    console.print("  [bold]exit[/]               — Quit the chat")
+    console.print("  [bold]/connect[/]                — Connect to a Minds server and select a mind")
+    console.print("  [bold]/connect-data-source[/]    — Connect a database or API to the Local Vault")
+    console.print("  [bold]/data-connections[/]       — View and manage stored keys and connections")
+    console.print("  [bold]/setup[/]                  — Configure models or memory settings")
+    console.print("  [bold]/memory[/]                 — Show memory status dashboard")
+    console.print("  [bold]/paste[/]                  — Attach clipboard image to your message")
+    console.print("  [bold]/resume[/]                 — Resume a previous chat session")
+    console.print("  [bold]/help[/]                   — Show this help message")
+    console.print("  [bold]exit[/]                    — Quit the chat")
     console.print()
 
 
@@ -2540,6 +2781,11 @@ async def _chat_loop(console: Console, settings: AntonSettings, *, resume: bool 
                     continue
                 elif cmd == "/memory":
                     _handle_memory(console, settings, cortex, episodic=episodic)
+                    continue
+                elif cmd == "/connect-data-source":
+                    session = await _handle_connect_datasource(
+                        console, session._scratchpads, session,
+                    )
                     continue
                 elif cmd == "/data-connections":
                     session = await _handle_data_connections(
