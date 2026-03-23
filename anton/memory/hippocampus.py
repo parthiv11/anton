@@ -396,7 +396,7 @@ class Hippocampus:
             # Remove leading "- "
             entry = stripped[2:]
             # Remove trailing <!-- ... --> metadata
-            entry = re.sub(r"\s*<!--.*?-->\s*$", "", entry)
+            entry = re.sub(r"\s*<!--[\s\S]*?-->\s*$", "", entry)
             entry = entry.strip()
             if entry:
                 texts.add(entry)
