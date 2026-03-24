@@ -236,73 +236,125 @@ def _has_api_key(settings) -> bool:
     return True
 
 
-def _typewrite(text: str, delay: float = 0.02) -> None:
-    """Print text character by character with a typing effect."""
-    import sys
-    import time
-
-    for ch in text:
-        sys.stdout.write(ch)
-        sys.stdout.flush()
-        time.sleep(delay)
-    sys.stdout.write("\n")
-    sys.stdout.flush()
-
-
 def _onboard(settings) -> None:
-    """First-time onboarding: animated robot + typed intro + LLM provider selection."""
+    """First-time onboarding: animated robot talking the intro + LLM provider selection."""
     import sys
     import time
 
     from rich.prompt import Prompt
 
     from anton import __version__
-    from anton.channel.branding import render_banner
     from anton.workspace import Workspace
 
     ws = Workspace(Path.home())
     g = "anton.glow"
 
-    # Animated robot banner (same as normal launch)
-    render_banner(console)
+    _INTRO_LINES = [
+        "",
+        "Hi! I'm Anton, an autonomous AI coworker built by MindsDB.",
+        "",
+        "For the best experience, I recommend MindsDB Cloud (mdb.ai)",
+        "as your LLM provider. It is optimized for me with:",
+        "",
+        "  \u2713 Smart model routing",
+        "  \u2713 Faster responses",
+        "  \u2713 Cost optimized",
+    ]
 
-    console.print()
-
-    # Type out the intro
     if sys.stdout.isatty():
-        _typewrite("Anton is an autonomous AI coworker built by MindsDB.")
-        time.sleep(0.3)
-        console.print()
-        _typewrite("For the best experience, we recommend MindsDB Cloud (mdb.ai)")
-        _typewrite("as your LLM provider. It is optimized for Anton with:")
-        time.sleep(0.2)
-        console.print()
-        for line in [
-            "  \u2713 Smart model routing",
-            "  \u2713 Faster responses",
-            "  \u2713 Cost optimized",
-        ]:
-            _typewrite(line, delay=0.015)
-            time.sleep(0.1)
+        _animate_onboard(console, __version__, _INTRO_LINES)
     else:
-        console.print(
-            "[anton.cyan]Anton[/] is an autonomous AI coworker built by "
-            "[bold anton.cyan]MindsDB[/]."
-        )
+        # Static fallback for non-interactive terminals
+        from anton.channel.branding import render_banner
+
+        render_banner(console, animate=False)
         console.print()
-        console.print(
-            "For the best experience, we recommend [bold anton.cyan]MindsDB Cloud[/] "
-            "[anton.muted](mdb.ai)[/]"
-        )
-        console.print("as your LLM provider. It is optimized for Anton with:")
-        console.print()
-        console.print("  [anton.success]\u2713[/] Smart model routing")
-        console.print("  [anton.success]\u2713[/] Faster responses")
-        console.print("  [anton.success]\u2713[/] Cost optimized")
+        for line in _INTRO_LINES:
+            console.print(line)
 
     console.print()
     console.print(f"[{g}] {'━' * 40}[/]")
     console.print()
+
+
+def _animate_onboard(console, version: str, intro_lines: list[str]) -> None:
+    """Animate the robot talking while typing out the intro text below."""
+    import time
+
+    from rich.live import Live
+    from rich.text import Text
+
+    from anton.channel.branding import (
+        _MOUTH_SMILE,
+        _MOUTH_TALK,
+        _build_robot_text,
+        pick_tagline,
+    )
+
+    tagline = pick_tagline()
+    char_delay = 0.02
+    line_pause = 0.15
+    char_count = 0  # drives mouth animation
+
+    def _build_frame(mouth: str, typed_lines: list[str]) -> Text:
+        """Build robot + separator + typed text as a single renderable."""
+        frame = _build_robot_text(mouth, "\u2661\u2661\u2661\u2661")
+        frame.append(f" {'━' * 40}\n", style="bold cyan")
+        frame.append(f" v{version} \u2014 \"{tagline}\"\n", style="dim")
+        frame.append("\n")
+        frame.append(" anton> ", style="bold cyan")
+        for line in typed_lines:
+            frame.append(line)
+        return frame
+
+    with Live(
+        _build_frame(_MOUTH_SMILE, []),
+        console=console,
+        refresh_per_second=30,
+        transient=True,
+    ) as live:
+        time.sleep(0.4)
+
+        typed_so_far: list[str] = []
+
+        for line_idx, line in enumerate(intro_lines):
+            if line == "":
+                typed_so_far.append("\n")
+                live.update(_build_frame(_MOUTH_SMILE, typed_so_far))
+                time.sleep(line_pause)
+                continue
+
+            # Type out each character
+            current = ""
+            for ch in line:
+                current += ch
+                char_count += 1
+                mouth = _MOUTH_TALK[char_count % 2]
+                live.update(_build_frame(mouth, typed_so_far + [current]))
+                time.sleep(char_delay)
+
+            typed_so_far.append(current + "\n")
+            live.update(_build_frame(_MOUTH_SMILE, typed_so_far))
+            time.sleep(line_pause)
+
+        # Hold final frame briefly
+        time.sleep(0.3)
+
+    # Print the static final state
+    from anton.channel.branding import _render_robot_static
+
+    _render_robot_static(console, "\u2661\u2661\u2661\u2661")
+    console.print(f"[{g}] {'━' * 40}[/]")
+    console.print(f" v{version} \u2014 [anton.muted]\"{tagline}\"[/]")
+    console.print()
+    console.print("[anton.cyan] anton>[/] ", end="")
+    for line in intro_lines:
+        if line == "":
+            console.print()
+        elif line.startswith("  \u2713"):
+            console.print(f"[anton.success]{line}[/]")
+        else:
+            console.print(line)
 
     console.print("  [bold]1[/]  [link=https://mdb.ai][anton.cyan]MindsDB Cloud[/][/link] [anton.success](recommended)[/]")
     console.print("  [bold]2[/]  [anton.cyan]Bring your own key[/] [anton.muted]Anthropic / OpenAI[/]")
