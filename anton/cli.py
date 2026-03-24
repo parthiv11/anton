@@ -252,12 +252,13 @@ def _onboard(settings) -> None:
     _INTRO_LINES = [
         "Hi! I'm Anton, an autonomous AI coworker built by MindsDB.",
         "",
-        "For the best experience, I recommend MindsDB Cloud https://mdb.ai",
-        "as your LLM provider. It is optimized for me with:",
+        "For the best experience, I recommend MindsDB Cloud as your",
+        "LLM Provider, it is optimized for:",
         "",
         "  \u2713 Smart model routing",
         "  \u2713 Faster responses",
         "  \u2713 Cost optimized",
+        "  \u2713 Secure data connectors",
     ]
 
     if sys.stdout.isatty():
@@ -417,14 +418,6 @@ def _setup_minds(settings, ws, *, enterprise: bool = False) -> None:
 
     console.print()
 
-    if not enterprise:
-        console.print(
-            "  [anton.muted]Don't have a key yet? Create one in seconds at[/]"
-            " [link=https://mdb.ai][bold anton.cyan]https://mdb.ai[/][/link]"
-        )
-        webbrowser.open("https://mdb.ai")
-        console.print()
-
     minds_url = Prompt.ask(
         "  [anton.cyan]Server URL[/]",
         default="https://mdb.ai",
@@ -433,6 +426,18 @@ def _setup_minds(settings, ws, *, enterprise: bool = False) -> None:
     if not minds_url.startswith("http://") and not minds_url.startswith("https://"):
         minds_url = "https://" + minds_url
     minds_url = minds_url.rstrip("/")
+
+    has_key = Confirm.ask(
+        "  Do you have an API key?",
+        default=True,
+        console=console,
+    )
+    if not has_key:
+        console.print(
+            "  [anton.muted]No problem — it only takes a few seconds to create one.[/]"
+        )
+        webbrowser.open(f"{minds_url}/apiKeys")
+        console.print()
 
     api_key = Prompt.ask("  [anton.cyan]API key[/]", console=console)
     if not api_key.strip():
