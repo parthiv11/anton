@@ -2408,7 +2408,7 @@ async def _chat_loop(console: Console, settings: AntonSettings, *, resume: bool 
             current_session_id = resumed_id
 
 
-    console.print("[anton.muted] Chat with Anton. Type '/help' for commands or 'exit' to quit.[/]")
+    console.print("[anton.muted] Chat with me, type '/help' for commands or 'exit' to quit.[/]")
     console.print(f"[anton.cyan_dim] {'━' * 40}[/]")
     console.print()
 

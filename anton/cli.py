@@ -406,7 +406,7 @@ def _animate_onboard(console, version: str, intro_lines: list[str], *, settings,
         f"  [anton.muted]Provider[/]  [anton.cyan]{provider_label}[/]"
         f"   [anton.muted]Model[/]  [anton.cyan]{model_label}[/]"
     )
-    console.print(f"  [anton.success]Ready.[/] [anton.muted]Saved to {ws.env_path}[/]")
+    console.print(f"  [anton.success]Ready.[/]")
     console.print()
 
 
