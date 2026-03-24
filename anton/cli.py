@@ -261,7 +261,7 @@ def _onboard(settings) -> None:
     ]
 
     if sys.stdout.isatty():
-        _animate_onboard(console, __version__, _INTRO_LINES)
+        _animate_onboard(console, __version__, _INTRO_LINES, settings=settings, ws=ws)
     else:
         # Static fallback for non-interactive terminals
         from anton.channel.branding import render_banner
@@ -272,7 +272,7 @@ def _onboard(settings) -> None:
             console.print(line)
 
 
-def _animate_onboard(console, version: str, intro_lines: list[str]) -> None:
+def _animate_onboard(console, version: str, intro_lines: list[str], *, settings, ws) -> None:
     """Animate the robot talking while typing out the intro text below."""
     import time
 
