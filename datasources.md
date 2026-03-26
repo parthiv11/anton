@@ -72,115 +72,6 @@ test_snippet: |
 
 ---
 
-## MariaDB
-
-```yaml
-engine: mariadb
-display_name: MariaDB
-pip: mysql-connector-python
-name_from: database
-fields:
-  - { name: host,     required: true,  secret: false, description: "hostname or IP of your MariaDB server" }
-  - { name: port,     required: true, secret: false, description: "port number", default: "3306" }
-  - { name: database, required: true,  secret: false, description: "database name to connect" }
-  - { name: user,     required: true,  secret: false, description: "MariaDB username" }
-  - { name: password, required: true,  secret: true,  description: "MariaDB password" }
-  - { name: ssl,      required: false, secret: false, description: "enable SSL (true/false)" }
-  - { name: ssl_ca,   required: false, secret: false, description: "path to CA certificate file" }
-  - { name: ssl_cert, required: false, secret: false, description: "path to client certificate file" }
-  - { name: ssl_key,  required: false, secret: false, description: "path to client private key file" }
-test_snippet: |
-  import mysql.connector, os
-  conn = mysql.connector.connect(
-      host=os.environ['DS_HOST'],
-      port=int(os.environ.get('DS_PORT', '3306')),
-      database=os.environ['DS_DATABASE'],
-      user=os.environ['DS_USER'],
-      password=os.environ['DS_PASSWORD'],
-  )
-  conn.close()
-  print("ok")
-```
-
-MariaDB is wire-compatible with MySQL, so the mysql-connector-python driver works for both.
-
----
-
-## Microsoft SQL Server
-
-```yaml
-engine: mssql
-display_name: Microsoft SQL Server
-pip: pymssql
-name_from: database
-fields:
-  - { name: host,     required: true,  secret: false, description: "hostname or IP of the SQL Server (for Azure use server field instead)" }
-  - { name: port,     required: true, secret: false, description: "port number", default: "1433" }
-  - { name: database, required: true,  secret: false, description: "database name" }
-  - { name: user,     required: true,  secret: false, description: "SQL Server username" }
-  - { name: password, required: true,  secret: true,  description: "SQL Server password" }
-  - { name: server,   required: false, secret: false, description: "server name — use for named instances or Azure SQL (e.g. myserver.database.windows.net)" }
-  - { name: schema,   required: false, secret: false, description: "schema name (defaults to dbo)" }
-test_snippet: |
-  import pymssql, os
-  conn = pymssql.connect(
-      server=os.environ.get('DS_SERVER') or os.environ['DS_HOST'],
-      port=os.environ.get('DS_PORT', '1433'),
-      database=os.environ['DS_DATABASE'],
-      user=os.environ['DS_USER'],
-      password=os.environ['DS_PASSWORD'],
-  )
-  conn.close()
-  print("ok")
-```
-
-For Azure SQL Database use `server` field with value like `myserver.database.windows.net`.
-For Windows Authentication omit user/password and ensure pymssql is built with Kerberos support.
-
----
-
-## HubSpot
-
-```yaml
-engine: hubspot
-display_name: HubSpot
-pip: hubspot-api-client
-auth_method: choice
-auth_methods:
-  - name: pat
-    display: "Private App Token (recommended)"
-    fields:
-      - { name: access_token, required: true, secret: true, description: "HubSpot Private App token (starts with pat-na1-)" }
-  - name: oauth2
-    display: "OAuth2 (for multi-account or publishable apps)"
-    fields:
-      - { name: client_id,     required: true,  secret: false, description: "OAuth2 client ID" }
-      - { name: client_secret, required: true,  secret: true,  description: "OAuth2 client secret" }
-    oauth2:
-      auth_url: https://app.hubspot.com/oauth/authorize
-      token_url: https://api.hubapi.com/oauth/v1/token
-      scopes: [crm.objects.contacts.read, crm.objects.deals.read]
-      store_fields: [access_token, refresh_token]
-test_snippet: |
-  import hubspot, os
-  client = hubspot.Client.create(access_token=os.environ['DS_ACCESS_TOKEN'])
-  client.crm.contacts.basic_api.get_page(limit=1)
-  print("ok")
-```
-
-For Private App Token: HubSpot → Settings → Integrations → Private Apps → Create.
-Recommended scopes: `crm.objects.contacts.read`, `crm.objects.deals.read`, `crm.objects.companies.read`.
-
-For OAuth2: collect client_id and client_secret, then use the scratchpad to:
-
-1. Build the authorization URL using `auth_url` + params above
-2. Start a local HTTP server on port 8099 to catch the callback
-3. Open the URL in the user's browser with `webbrowser.open()`
-4. Extract the `code` from the callback, POST to `token_url` for tokens
-5. Return `access_token` and `refresh_token` to store in wallet
-
----
-
 ## Snowflake
 
 ```yaml
@@ -230,39 +121,6 @@ Format is either `<orgname>-<accountname>` or `<accountlocator>.<region>.<cloud>
 
 ---
 
-## Oracle Database
-
-```yaml
-engine: oracle_database
-display_name: Oracle Database
-pip: oracledb
-name_from: [host, service_name]
-fields:
-  - { name: user,         required: true,  secret: false, description: "Oracle database username" }
-  - { name: password,     required: true,  secret: true,  description: "Oracle database password" }
-  - { name: host,         required: true, secret: false, description: "hostname or IP address of the Oracle server" }
-  - { name: port,         required: true, secret: false, description: "port number (default 1521)", default: "1521" }
-  - { name: service_name, required: false, secret: false, description: "Oracle service name (preferred over SID)" }
-  - { name: sid,          required: false, secret: false, description: "Oracle SID — use service_name if possible" }
-  - { name: dsn,          required: false, secret: false, description: "full DSN string — overrides host/port/service_name" }
-  - { name: auth_mode,    required: false, secret: false, description: "authorization mode (e.g. SYSDBA)" }
-test_snippet: |
-  import oracledb, os
-  dsn = os.environ.get('DS_DSN') or oracledb.makedsn(
-      os.environ.get('DS_HOST', 'localhost'),
-      os.environ.get('DS_PORT', '1521'),
-      service_name=os.environ.get('DS_SERVICE_NAME', ''),
-  )
-  conn = oracledb.connect(user=os.environ['DS_USER'], password=os.environ['DS_PASSWORD'], dsn=dsn)
-  conn.close()
-  print("ok")
-```
-
-oracledb runs in thin mode by default (no Oracle Client libraries needed).
-Set `auth_mode` to `SYSDBA` or `SYSOPER` for privileged connections.
-
----
-
 ## Google BigQuery
 
 ```yaml
@@ -295,6 +153,39 @@ test_snippet: |
 
 To create a service account key: GCP Console → IAM → Service Accounts → your account →
 Keys → Add Key → JSON. Grant the account `BigQuery Data Viewer` + `BigQuery Job User` roles.
+
+---
+
+## Microsoft SQL Server
+
+```yaml
+engine: mssql
+display_name: Microsoft SQL Server
+pip: pymssql
+name_from: database
+fields:
+  - { name: host,     required: true,  secret: false, description: "hostname or IP of the SQL Server (for Azure use server field instead)" }
+  - { name: port,     required: true, secret: false, description: "port number", default: "1433" }
+  - { name: database, required: true,  secret: false, description: "database name" }
+  - { name: user,     required: true,  secret: false, description: "SQL Server username" }
+  - { name: password, required: true,  secret: true,  description: "SQL Server password" }
+  - { name: server,   required: false, secret: false, description: "server name — use for named instances or Azure SQL (e.g. myserver.database.windows.net)" }
+  - { name: schema,   required: false, secret: false, description: "schema name (defaults to dbo)" }
+test_snippet: |
+  import pymssql, os
+  conn = pymssql.connect(
+      server=os.environ.get('DS_SERVER') or os.environ['DS_HOST'],
+      port=os.environ.get('DS_PORT', '1433'),
+      database=os.environ['DS_DATABASE'],
+      user=os.environ['DS_USER'],
+      password=os.environ['DS_PASSWORD'],
+  )
+  conn.close()
+  print("ok")
+```
+
+For Azure SQL Database use `server` field with value like `myserver.database.windows.net`.
+For Windows Authentication omit user/password and ensure pymssql is built with Kerberos support.
 
 ---
 
@@ -362,6 +253,115 @@ test_snippet: |
 
 Personal access token: User Settings → Developer → Access Tokens → Generate New Token.
 HTTP path and server hostname: SQL Warehouses → your warehouse → Connection Details tab.
+
+---
+
+## MariaDB
+
+```yaml
+engine: mariadb
+display_name: MariaDB
+pip: mysql-connector-python
+name_from: database
+fields:
+  - { name: host,     required: true,  secret: false, description: "hostname or IP of your MariaDB server" }
+  - { name: port,     required: true, secret: false, description: "port number", default: "3306" }
+  - { name: database, required: true,  secret: false, description: "database name to connect" }
+  - { name: user,     required: true,  secret: false, description: "MariaDB username" }
+  - { name: password, required: true,  secret: true,  description: "MariaDB password" }
+  - { name: ssl,      required: false, secret: false, description: "enable SSL (true/false)" }
+  - { name: ssl_ca,   required: false, secret: false, description: "path to CA certificate file" }
+  - { name: ssl_cert, required: false, secret: false, description: "path to client certificate file" }
+  - { name: ssl_key,  required: false, secret: false, description: "path to client private key file" }
+test_snippet: |
+  import mysql.connector, os
+  conn = mysql.connector.connect(
+      host=os.environ['DS_HOST'],
+      port=int(os.environ.get('DS_PORT', '3306')),
+      database=os.environ['DS_DATABASE'],
+      user=os.environ['DS_USER'],
+      password=os.environ['DS_PASSWORD'],
+  )
+  conn.close()
+  print("ok")
+```
+
+MariaDB is wire-compatible with MySQL, so the mysql-connector-python driver works for both.
+
+---
+
+## HubSpot
+
+```yaml
+engine: hubspot
+display_name: HubSpot
+pip: hubspot-api-client
+auth_method: choice
+auth_methods:
+  - name: pat
+    display: "Private App Token (recommended)"
+    fields:
+      - { name: access_token, required: true, secret: true, description: "HubSpot Private App token (starts with pat-na1-)" }
+  - name: oauth2
+    display: "OAuth2 (for multi-account or publishable apps)"
+    fields:
+      - { name: client_id,     required: true,  secret: false, description: "OAuth2 client ID" }
+      - { name: client_secret, required: true,  secret: true,  description: "OAuth2 client secret" }
+    oauth2:
+      auth_url: https://app.hubspot.com/oauth/authorize
+      token_url: https://api.hubapi.com/oauth/v1/token
+      scopes: [crm.objects.contacts.read, crm.objects.deals.read]
+      store_fields: [access_token, refresh_token]
+test_snippet: |
+  import hubspot, os
+  client = hubspot.Client.create(access_token=os.environ['DS_ACCESS_TOKEN'])
+  client.crm.contacts.basic_api.get_page(limit=1)
+  print("ok")
+```
+
+For Private App Token: HubSpot → Settings → Integrations → Private Apps → Create.
+Recommended scopes: `crm.objects.contacts.read`, `crm.objects.deals.read`, `crm.objects.companies.read`.
+
+For OAuth2: collect client_id and client_secret, then use the scratchpad to:
+
+1. Build the authorization URL using `auth_url` + params above
+2. Start a local HTTP server on port 8099 to catch the callback
+3. Open the URL in the user's browser with `webbrowser.open()`
+4. Extract the `code` from the callback, POST to `token_url` for tokens
+5. Return `access_token` and `refresh_token` to store in wallet
+
+---
+
+## Oracle Database
+
+```yaml
+engine: oracle_database
+display_name: Oracle Database
+pip: oracledb
+name_from: [host, service_name]
+fields:
+  - { name: user,         required: true,  secret: false, description: "Oracle database username" }
+  - { name: password,     required: true,  secret: true,  description: "Oracle database password" }
+  - { name: host,         required: true, secret: false, description: "hostname or IP address of the Oracle server" }
+  - { name: port,         required: true, secret: false, description: "port number (default 1521)", default: "1521" }
+  - { name: service_name, required: false, secret: false, description: "Oracle service name (preferred over SID)" }
+  - { name: sid,          required: false, secret: false, description: "Oracle SID — use service_name if possible" }
+  - { name: dsn,          required: false, secret: false, description: "full DSN string — overrides host/port/service_name" }
+  - { name: auth_mode,    required: false, secret: false, description: "authorization mode (e.g. SYSDBA)" }
+test_snippet: |
+  import oracledb, os
+  dsn = os.environ.get('DS_DSN') or oracledb.makedsn(
+      os.environ.get('DS_HOST', 'localhost'),
+      os.environ.get('DS_PORT', '1521'),
+      service_name=os.environ.get('DS_SERVICE_NAME', ''),
+  )
+  conn = oracledb.connect(user=os.environ['DS_USER'], password=os.environ['DS_PASSWORD'], dsn=dsn)
+  conn.close()
+  print("ok")
+```
+
+oracledb runs in thin mode by default (no Oracle Client libraries needed).
+Set `auth_mode` to `SYSDBA` or `SYSOPER` for privileged connections.
 
 ---
 

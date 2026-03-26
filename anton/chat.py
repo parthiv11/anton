@@ -3024,15 +3024,16 @@ async def _handle_connect_datasource(
         answer = prefill
     else:
         console.print(
-            "[anton.cyan](anton)[/] Which data source would you like to connect?\n"
+            "[anton.cyan](anton)[/] Choose a data source:\n"
         )
-        console.print("       [bold]  0.[/bold] Connect to a custom datasource")
-        console.print("              [bold]OR Select from the list below[/bold]")
+        console.print("       [bold]  Primary")
+        console.print("         [bold]  0.[/bold] Custom datasource (connect anything via API, SQL, or MCP)\n")
+        console.print("       [bold]  Predefined")
         for i, e in enumerate(all_engines, 1):
-            console.print(f"        [bold]{i:>2}.[/bold] {e.display_name}")
+            console.print(f"          [bold]{i:>2}.[/bold] {e.display_name}")
         console.print()
         answer = Prompt.ask(
-            "[anton.cyan](anton)[/] Enter a number, or type the name",
+            "[anton.cyan](anton)[/] Enter a number or type a name",
             console=console,
         )
 
