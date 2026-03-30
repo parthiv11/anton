@@ -1561,16 +1561,6 @@ async def _handle_setup_models(
     current_num = {"anthropic": "1", "openai": "2", "openai-compatible": "3"}.get(
         settings.planning_provider, "1"
     )
-    console.print("[anton.cyan]Available providers:[/]")
-    console.print(
-        r"  [bold]1[/]  Anthropic (Claude)                    [dim]\[recommended][/]"
-    )
-    console.print(
-        r"  [bold]2[/]  OpenAI (GPT / o-series)               [dim]\[experimental][/]"
-    )
-    console.print(
-        r"  [bold]3[/]  OpenAI-compatible (custom endpoint)   [dim]\[experimental][/]"
-    )
     console.print()
     # Use the same onboarding flow from cli.py
 
