@@ -322,7 +322,7 @@ async def _animate_onboard(console, version: str, intro_lines: list[str], *, set
         frame.append(f" {'━' * 40}\n", style="bold cyan")
         frame.append(f" v{version} \u2014 \"{tagline}\"\n", style="dim")
         frame.append("\n")
-        frame.append("anton> ", style="bold cyan")
+        frame.append("anton> ", style="anton.prompt")
         for line in typed_lines:
             frame.append(line)
         return frame
@@ -367,7 +367,7 @@ async def _animate_onboard(console, version: str, intro_lines: list[str], *, set
     console.print(f"[anton.glow] {'━' * 40}[/]")
     console.print(f" v{version} \u2014 [anton.muted]\"{tagline}\"[/]")
     console.print()
-    console.print("[anton.cyan]anton>[/] ", end="")
+    console.print("[anton.prompt]anton>[/] ", end="")
     first_text = True
     for line in intro_lines:
         if line == "":

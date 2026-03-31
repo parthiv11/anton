@@ -365,12 +365,12 @@ class StreamDisplay:
         # Print answer
         if self._activities:
             if self._buffer:
-                self._console.print(Text("anton> ", style="anton.cyan"), end="")
+                self._console.print(Text("anton> ", style="anton.prompt"), end="")
                 self._console.print(Markdown(self._buffer))
         else:
             all_text = self._initial_text + self._buffer
             if all_text:
-                self._console.print(Text("anton> ", style="anton.cyan"), end="")
+                self._console.print(Text("anton> ", style="anton.prompt"), end="")
                 self._console.print(Markdown(all_text))
 
         self._active = False

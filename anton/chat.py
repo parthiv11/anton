@@ -1757,9 +1757,12 @@ async def _prompt_or_cancel(
         is_password=password,
     )
 
+    from anton.channel.theme import get_palette as _get_palette
+    _prompt_color = _get_palette().prompt
+
     if label.startswith("(anton) "):
         body = label[len("(anton) "):]
-        message = HTML(f"<ansibrightcyan>(anton)</ansibrightcyan> {body}{suffix}")
+        message = HTML(f"<style fg='{_prompt_color}' bold='true'>(anton)</style> {body}{suffix}")
     else:
         message = HTML(f"{label}{suffix}")
 
@@ -4179,8 +4182,10 @@ async def _chat_loop(
                 console.print()
 
             try:
+                from anton.channel.theme import get_palette as _gp
+                _you_color = _gp().prompt
                 user_input = await prompt_session.prompt_async(
-                    [("bold fg:#00ff9f", "you>"), ("", " ")]
+                    [(f"bold fg:{_you_color}", "you>"), ("", " ")]
                 )
             except EOFError:
                 break

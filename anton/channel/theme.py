@@ -12,6 +12,7 @@ from rich.theme import Theme
 class Palette:
     cyan: str
     cyan_dim: str
+    prompt: str
     success: str
     error: str
     warning: str
@@ -21,6 +22,7 @@ class Palette:
 DARK_PALETTE = Palette(
     cyan="#22d3ee",
     cyan_dim="#0891b2",
+    prompt="#22d3ee",
     success="#2FBF71",
     error="#FF6B6B",
     warning="#FFB020",
@@ -30,6 +32,7 @@ DARK_PALETTE = Palette(
 LIGHT_PALETTE = Palette(
     cyan="#006B6B",
     cyan_dim="#004D4D",
+    prompt="#005F5F",
     success="#1A7F42",
     error="#DC2626",
     warning="#D97706",
@@ -44,7 +47,9 @@ def detect_color_mode() -> str:
     return "dark"
 
 
-def get_palette(mode: str) -> Palette:
+def get_palette(mode: str | None = None) -> Palette:
+    if mode is None:
+        mode = detect_color_mode()
     return LIGHT_PALETTE if mode == "light" else DARK_PALETTE
 
 
@@ -54,6 +59,7 @@ def build_rich_theme(mode: str) -> Theme:
         {
             "anton.cyan": p.cyan,
             "anton.cyan_dim": p.cyan_dim,
+            "anton.prompt": f"bold {p.prompt}",
             "anton.glow": f"bold {p.cyan}",
             "anton.heading": f"bold {p.cyan}",
             "anton.success": p.success,
