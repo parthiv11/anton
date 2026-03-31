@@ -3837,6 +3837,29 @@ async def _handle_test_datasource(
     console.print()
 
 
+def _handle_theme(console: Console, arg: str) -> None:
+    """Switch the color theme (light/dark)."""
+    import os
+    from anton.channel.theme import detect_color_mode, build_rich_theme
+
+    current = detect_color_mode()
+
+    if not arg:
+        new_mode = "light" if current == "dark" else "dark"
+    elif arg in ("light", "dark"):
+        new_mode = arg
+    else:
+        console.print(f"[anton.warning]Unknown theme '{arg}'. Use: /theme light | /theme dark[/]")
+        console.print()
+        return
+
+    os.environ["ANTON_THEME"] = new_mode
+    # Re-apply the theme to the console
+    console._theme_stack.push_theme(build_rich_theme(new_mode))
+    console.print(f"[anton.success]Theme set to {new_mode}.[/]")
+    console.print()
+
+
 def _print_slash_help(console: Console) -> None:
     """Print available slash commands."""
     console.print()
@@ -3853,7 +3876,8 @@ def _print_slash_help(console: Console) -> None:
     console.print("\n[bold]Workspace[/]")
     console.print("  [bold]/setup[/]     — Configure models and memory settings")
     console.print("  [bold]/memory[/]    — View memory status and usage")
-    
+    console.print("  [bold]/theme[/]     — Switch theme (light/dark)")
+
     console.print("\n[bold]Chat Tools[/]")
     console.print("  [bold]/paste[/]     — Attach an image from your clipboard")
     console.print("  [bold]/resume[/]    — Continue a previous session")
@@ -4308,6 +4332,10 @@ async def _chat_loop(
                     )
                     if resumed_id:
                         current_session_id = resumed_id
+                    continue
+                elif cmd == "/theme":
+                    arg = parts[1].strip() if len(parts) > 1 else ""
+                    _handle_theme(console, arg)
                     continue
                 elif cmd == "/help":
                     _print_slash_help(console)
