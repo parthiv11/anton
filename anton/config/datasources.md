@@ -16,6 +16,7 @@ engine: postgres
 display_name: PostgreSQL
 pip: psycopg2-binary
 name_from: database
+popular: true
 fields:
   - { name: host,     required: true,  secret: false, description: "hostname or IP of your database server" }
   - { name: port,     required: true, secret: false, description: "port number", default: "5432" }
@@ -47,6 +48,7 @@ engine: mysql
 display_name: MySQL
 pip: mysql-connector-python
 name_from: database
+popular: true
 fields:
   - { name: host,     required: true,  secret: false, description: "hostname or IP of your MySQL server" }
   - { name: port,     required: true, secret: false, description: "port number", default: "3306" }
@@ -78,6 +80,7 @@ test_snippet: |
 engine: snowflake
 display_name: Snowflake
 pip: snowflake-connector-python
+popular: true
 name_from: [account, database]
 auth_method: choice
 auth_methods:
@@ -127,6 +130,7 @@ Format is either `<orgname>-<accountname>` or `<accountlocator>.<region>.<cloud>
 engine: bigquery
 display_name: Google BigQuery
 pip: google-cloud-bigquery
+popular: true
 name_from: [project_id, dataset]
 fields:
   - { name: project_id,           required: true,  secret: false, description: "GCP project ID containing your BigQuery datasets" }
@@ -162,6 +166,7 @@ Keys → Add Key → JSON. Grant the account `BigQuery Data Viewer` + `BigQuery 
 engine: mssql
 display_name: Microsoft SQL Server
 pip: pymssql
+popular: true
 name_from: database
 fields:
   - { name: host,     required: true,  secret: false, description: "hostname or IP of the SQL Server (for Azure use server field instead)" }
@@ -195,6 +200,7 @@ For Windows Authentication omit user/password and ensure pymssql is built with K
 engine: redshift
 display_name: Amazon Redshift
 pip: psycopg2-binary
+popular: true
 name_from: [host, database]
 fields:
   - { name: host,     required: true,  secret: false, description: "Redshift cluster endpoint (e.g. mycluster.abc123.us-east-1.redshift.amazonaws.com)" }
@@ -229,6 +235,7 @@ Redshift → Clusters → your cluster → Endpoint (omit the port suffix).
 engine: databricks
 display_name: Databricks
 pip: databricks-sql-connector
+popular: true
 name_from: [server_hostname, catalog]
 fields:
   - { name: server_hostname,      required: true,  secret: false, description: "server hostname for the cluster or SQL warehouse (from JDBC/ODBC connection string)" }
@@ -262,6 +269,7 @@ HTTP path and server hostname: SQL Warehouses → your warehouse → Connection 
 engine: mariadb
 display_name: MariaDB
 pip: mysql-connector-python
+popular: true
 name_from: database
 fields:
   - { name: host,     required: true,  secret: false, description: "hostname or IP of your MariaDB server" }
@@ -296,6 +304,7 @@ MariaDB is wire-compatible with MySQL, so the mysql-connector-python driver work
 engine: hubspot
 display_name: HubSpot
 pip: hubspot-api-client
+popular: true
 auth_method: choice
 auth_methods:
   - name: pat
@@ -338,6 +347,7 @@ For OAuth2: collect client_id and client_secret, then use the scratchpad to:
 engine: oracle_database
 display_name: Oracle Database
 pip: oracledb
+popular: true
 name_from: [host, service_name]
 fields:
   - { name: user,         required: true,  secret: false, description: "Oracle database username" }
@@ -371,6 +381,7 @@ Set `auth_mode` to `SYSDBA` or `SYSOPER` for privileged connections.
 engine: duckdb
 display_name: DuckDB
 pip: duckdb
+popular: false
 name_from: database
 fields:
   - { name: database,         required: false, secret: false, description: "path to DuckDB database file; omit or use :memory: for in-memory database", default: ":memory:" }
@@ -400,6 +411,7 @@ the access token. For local files, provide the path to a `.duckdb` file.
 engine: pgvector
 display_name: pgvector
 pip: pgvector psycopg2-binary
+popular: false
 name_from: database
 fields:
   - { name: host,     required: true,  secret: false, description: "hostname or IP of your PostgreSQL server with pgvector extension" }
@@ -437,6 +449,7 @@ Managed options: Supabase, Neon, and AWS RDS for PostgreSQL all support pgvector
 engine: chromadb
 display_name: ChromaDB
 pip: chromadb
+popular: false
 name_from: host
 fields:
   - { name: host,              required: true, secret: false, description: "ChromaDB server host for HTTP client mode (omit for local in-process mode)" }
@@ -471,6 +484,7 @@ or ephemeral in-memory. For production, run `chroma run` to start the HTTP serve
 engine: salesforce
 display_name: Salesforce
 pip: salesforce_api
+popular: true
 name_from: username
 fields:
   - { name: username,      required: true,  secret: false, description: "Salesforce account username (email)" }
@@ -502,6 +516,7 @@ Enable OAuth, add callback URL, select scopes (api, refresh_token).
 engine: shopify
 display_name: Shopify
 pip: ShopifyAPI
+popular: true
 name_from: shop_url
 fields:
   - { name: shop_url,      required: true, secret: false, description: "your Shopify store URL (e.g. mystore.myshopify.com)" }
@@ -530,6 +545,7 @@ Grant required API permissions (read_products, read_orders, etc.) then install t
 engine: netsuite
 display_name: NetSuite
 pip: requests-oauthlib>=1.3.1
+popular: false
 name_from: account_id
 fields:
   - { name: account_id,     required: true,  secret: false, description: "NetSuite account/realm ID (e.g. 123456_SB1)" }
@@ -570,6 +586,7 @@ Setup → Users/Roles → Access Tokens. The account ID can be found in Setup �
 engine: bigcommerce
 display_name: Big Commerce
 pip: httpx
+popular: false
 name_from: store_hash
 fields:
   - { name: api_base,     required: true,  secret: false, description: "Base URL of the BigCommerce API (e.g. https://api.bigcommerce.com/stores/0fh0fh0fh0/v3/)" }
@@ -623,12 +640,36 @@ and self-hosted PostgreSQL with the TimescaleDB extension installed.
 
 ---
 
+## Gmail
+
+```yaml
+engine: gmail
+display_name: Gmail
+name_from: email
+popular: true
+fields:
+  - { name: email,         required: true,  secret: false, description: "your Gmail address (e.g. you@gmail.com)" }
+  - { name: app_password,  required: true,  secret: true,  description: "16-character app password from myaccount.google.com/apppasswords" }
+test_snippet: |
+  import imaplib, os
+  imap = imaplib.IMAP4_SSL("imap.gmail.com")
+  imap.login(os.environ['DS_EMAIL'], os.environ['DS_APP_PASSWORD'])
+  imap.logout()
+  print("ok")
+```
+
+Requires 2-Factor Authentication enabled on your Google account. Then generate an App Password
+at myaccount.google.com/apppasswords — select "Mail" as the app. No OAuth setup needed.
+
+---
+
 ## Email
 
 ```yaml
 engine: email
 display_name: Email
 name_from: email
+popular: false
 fields:
   - { name: email,       required: true,  secret: false, description: "email address to connect" }
   - { name: password,    required: true,  secret: true,  description: "email account password or app-specific password" }
@@ -643,9 +684,8 @@ test_snippet: |
   print("ok")
 ```
 
-For Gmail, enable IMAP in Settings → See all settings → Forwarding and POP/IMAP, then use an
-App Password (Google Account → Security → 2-Step Verification → App passwords) instead of your
-account password. For other providers, set imap_server and smtp_server accordingly.
+For non-Gmail providers, set imap_server and smtp_server accordingly. Use an app-specific
+password if your provider requires it.
 
 ---
 

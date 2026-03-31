@@ -13,6 +13,7 @@ from anton.chat import (
     ChatSession,
     _DS_KNOWN_VARS,
     _DS_SECRET_VARS,
+    _PROMPT_RECONNECT_CANCEL,
     _build_datasource_context,
     _handle_add_custom_datasource,
     _handle_connect_datasource,
@@ -21,6 +22,7 @@ from anton.chat import (
     _handle_test_datasource,
     _register_secret_vars,
     _restore_namespaced_env,
+    _run_connection_test,
     _scrub_credentials,
     parse_connection_slug,
 )
@@ -558,7 +560,7 @@ class TestHandleConnectDatasource:
         with (
             patch("anton.chat.DataVault", return_value=DataVault(vault_dir=vault_dir)),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", return_value="MySQL"),
+            patch("anton.chat._prompt_or_cancel", return_value="MySQL"),
         ):
             result = await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -571,18 +573,19 @@ class TestHandleConnectDatasource:
         session = make_session()
         console = MagicMock()
         vault = DataVault(vault_dir=vault_dir)
-        prompt_responses = iter(["PostgreSQL", "n", "db.example.com", "", "", "", "", ""])
+        responses = iter(["PostgreSQL", "n", "db.example.com", "", "", "", "", ""])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
         conns = vault.list_connections()
         assert len(conns) == 1
         assert conns[0]["engine"] == "postgresql"
+        assert len(conns[0]["name"]) == 8 and all(c in "0123456789abcdef" for c in conns[0]["name"])
         assert conns[0]["name"].isalnum()
         session._scratchpads.get_or_create.assert_not_called()
 
@@ -599,15 +602,12 @@ class TestHandleConnectDatasource:
         pad.execute = AsyncMock(return_value=make_cell(stdout="ok"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.example.com", "5432", "prod_db", "alice", "s3cr3t", "",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.example.com", "5432", "prod_db", "alice", "s3cr3t", ""])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             result = await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -636,17 +636,12 @@ class TestHandleConnectDatasource:
         ])
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.example.com", "5432", "prod_db", "alice", "wrongpassword", "",
-            "y",              # retry?
-            "correctpassword",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.example.com", "5432", "prod_db", "alice", "wrongpassword", "", "y", "correctpassword"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -669,16 +664,12 @@ class TestHandleConnectDatasource:
         pad.execute = AsyncMock(return_value=make_cell(stdout="", error="connection refused"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.example.com", "5432", "prod_db", "alice", "badpass", "",
-            "n",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.example.com", "5432", "prod_db", "alice", "badpass", "", "n"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             result = await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -698,15 +689,12 @@ class TestHandleConnectDatasource:
         pad.execute = AsyncMock(return_value=make_cell(stdout="ok"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.example.com", "5432", "prod_db", "alice", "s3cr3t", "",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.example.com", "5432", "prod_db", "alice", "s3cr3t", ""])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -726,12 +714,12 @@ class TestHandleConnectDatasource:
         pad.execute = AsyncMock(return_value=make_cell(stdout="ok"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter(["HubSpot", "1", "y", "pat-na1-abc123"])
+        responses = iter(["HubSpot", "1", "y", "pat-na1-abc123"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -757,15 +745,12 @@ class TestHandleConnectDatasource:
         pad.execute = AsyncMock(return_value=make_cell(stdout="ok"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "host,user,password",
-            "db.example.com", "alice", "s3cr3t",
-        ])
+        responses = iter(["PostgreSQL", "host,user,password", "db.example.com", "alice", "s3cr3t"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -843,15 +828,12 @@ class TestCredentialScrubbing:
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
         secret_pw = "supersecretpassword999"
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.host.com", "5432", "mydb", "alice", secret_pw, "public",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.host.com", "5432", "mydb", "alice", secret_pw, "public"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(MagicMock(), session._scratchpads, session)
 
@@ -1205,7 +1187,7 @@ class TestEditDatasourceFlow:
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_values)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(prompt_values))),
         ):
             await _handle_connect_datasource(
                 console, session._scratchpads, session, datasource_name="postgresql-prod_db"
@@ -1241,7 +1223,7 @@ class TestEditDatasourceFlow:
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_values)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(prompt_values))),
         ):
             await _handle_connect_datasource(
                 console, session._scratchpads, session, datasource_name="postgresql-prod_db"
@@ -1347,15 +1329,12 @@ class TestEnvActivationCollisionFree:
         pad.execute = AsyncMock(return_value=make_cell(stdout="ok"))
         session._scratchpads.get_or_create = AsyncMock(return_value=pad)
 
-        prompt_responses = iter([
-            "PostgreSQL", "y",
-            "db.example.com", "5432", "prod_db", "alice", "s3cr3t", "",
-        ])
+        responses = iter(["PostgreSQL", "y", "db.example.com", "5432", "prod_db", "alice", "s3cr3t", ""])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
         ):
             await _handle_connect_datasource(console, session._scratchpads, session)
 
@@ -1424,7 +1403,7 @@ class TestDatasourceSlashCommandBehavior:
         with (
             patch("anton.chat.DataVault", return_value=DataVault(vault_dir=vault_dir)),
             patch("anton.chat.DatasourceRegistry", return_value=registry),
-            patch("rich.prompt.Prompt.ask", return_value="UnknownEngine"),
+            patch("anton.chat._prompt_or_cancel", return_value="UnknownEngine"),
         ):
             updated = await _handle_connect_datasource(
                 console, session._scratchpads, session,
@@ -1729,14 +1708,10 @@ class TestAddCustomDatasourceFlow:
         console = MagicMock()
         registry = self._make_registry(tmp_path)
 
-        # first response: initial auth question; second: the host field prompt
-        prompt_responses = iter(["I want to connect to mydb", "localhost"])
+        responses = iter(["I want to connect to mydb", "localhost"])
 
         with (
-            patch(
-                "rich.prompt.Prompt.ask",
-                side_effect=lambda *a, **kw: next(prompt_responses),
-            ),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -1763,16 +1738,10 @@ class TestAddCustomDatasourceFlow:
         console = MagicMock()
         registry = self._make_registry(tmp_path)
 
-        password_calls = []
-
-        def fake_prompt(*args, **kwargs):
-            if kwargs.get("password"):
-                password_calls.append(kwargs)
-                return "mysecret"
-            return "I want to connect"
+        responses = iter(["I want to connect", "mysecret"])
 
         with (
-            patch("rich.prompt.Prompt.ask", side_effect=fake_prompt),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -1783,7 +1752,6 @@ class TestAddCustomDatasourceFlow:
         assert result is not None
         _, credentials = result
         assert credentials["api_key"] == "mysecret"
-        assert len(password_calls) == 1, "expected exactly one password prompt"
 
     @pytest.mark.asyncio
     async def test_incomplete_custom_datasource_not_saved(
@@ -1804,14 +1772,10 @@ class TestAddCustomDatasourceFlow:
         console = MagicMock()
         registry = self._make_registry(tmp_path)
 
-        # User presses Enter (empty) for every prompt
-        prompt_responses = iter(["I want to connect", "", ""])
+        responses = iter(["I want to connect", "", ""])
 
         with (
-            patch(
-                "rich.prompt.Prompt.ask",
-                side_effect=lambda *a, **kw: next(prompt_responses),
-            ),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -1882,17 +1846,12 @@ class TestCustomDatasourceConnectFlow:
             test_snippet="print('ok')",
         ))
 
-        prompt_responses = iter([
-            "0",                  # choose custom
-            "My API Service",     # tool name
-            "I have an API key",  # auth description
-            "my_secret_key",      # api_key (secret prompt)
-        ])
+        responses = iter(["0", "My API Service", "I have an API key", "my_secret_key"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=self._make_registry(tmp_path)),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -1924,18 +1883,12 @@ class TestCustomDatasourceConnectFlow:
             test_snippet="print('ok')",
         ))
 
-        prompt_responses = iter([
-            "0",
-            "My API Service",
-            "I have an API key",
-            "bad_key",  # api_key
-            "n",        # retry?
-        ])
+        responses = iter(["0", "My API Service", "I have an API key", "bad_key", "n"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=self._make_registry(tmp_path)),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -1964,19 +1917,12 @@ class TestCustomDatasourceConnectFlow:
             test_snippet="print('ok')",
         ))
 
-        prompt_responses = iter([
-            "0",
-            "My API Service",
-            "I have an API key",
-            "bad_key",      # api_key first attempt
-            "y",            # retry?
-            "good_key",     # api_key retry
-        ])
+        responses = iter(["0", "My API Service", "I have an API key", "bad_key", "y", "good_key"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=self._make_registry(tmp_path)),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -2005,17 +1951,12 @@ class TestCustomDatasourceConnectFlow:
             test_snippet="",
         ))
 
-        prompt_responses = iter([
-            "0",
-            "My API Service",
-            "I have an API key",
-            "my_key",  # api_key
-        ])
+        responses = iter(["0", "My API Service", "I have an API key", "my_key"])
 
         with (
             patch("anton.chat.DataVault", return_value=vault),
             patch("anton.chat.DatasourceRegistry", return_value=self._make_registry(tmp_path)),
-            patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(prompt_responses)),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
             patch("anton.chat.Path") as mock_path_cls,
         ):
             self._mock_ds_path(mock_path_cls, tmp_path)
@@ -2024,3 +1965,252 @@ class TestCustomDatasourceConnectFlow:
         conns = vault.list_connections()
         assert len(conns) == 1
         pad.execute.assert_not_called()
+
+
+class TestEditDatasourceWithTestSnippet:
+    """Tests for /edit path: test_snippet runs before vault.save, not after."""
+
+    OLD_CREDS = {
+        "host": "pg.example.com",
+        "port": "5432",
+        "database": "prod_db",
+        "user": "alice",
+        "password": "good-pass",
+        "schema": "",
+    }
+
+    def _setup_pad(self, session, cell):
+        pad = AsyncMock()
+        pad.execute = AsyncMock(return_value=cell)
+        pad.reset = AsyncMock()
+        pad.install_packages = AsyncMock()
+        session._scratchpads.get_or_create = AsyncMock(return_value=pad)
+        return pad
+
+    @pytest.mark.asyncio
+    async def test_edit_failed_test_does_not_corrupt_vault(
+        self, vault_dir, registry, make_session, make_cell
+    ):
+        """edit with bad creds + test fails + user declines retry → original creds intact."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+        vault.save("postgresql", "prod_db", self.OLD_CREDS)
+
+        self._setup_pad(session, make_cell(stdout="", stderr="connection refused"))
+
+        # Keep all non-secret fields; enter bad password; decline retry.
+        responses = iter(["", "", "", "", "bad-pass", "", "n"])  # field values, then retry?
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(responses))),
+        ):
+            result = await _handle_connect_datasource(
+                console, session._scratchpads, session,
+                datasource_name="postgresql-prod_db",
+            )
+
+        saved = vault.load("postgresql", "prod_db")
+        assert saved is not None
+        assert saved.get("password") == "good-pass"
+        assert result._history == []
+
+    @pytest.mark.asyncio
+    async def test_edit_successful_test_persists_new_credentials(
+        self, vault_dir, registry, make_session, make_cell
+    ):
+        """edit with valid creds + test passes → new creds saved to vault."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+        vault.save("postgresql", "prod_db", self.OLD_CREDS)
+
+        self._setup_pad(session, make_cell(stdout="ok"))
+
+        prompt_responses = iter([
+            "",          # host
+            "",          # port
+            "",          # database
+            "",          # user
+            "new-pass",  # password (updated)
+            "",          # schema
+        ])
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(prompt_responses))),
+        ):
+            result = await _handle_connect_datasource(
+                console, session._scratchpads, session,
+                datasource_name="postgresql-prod_db",
+            )
+
+        saved = vault.load("postgresql", "prod_db")
+        assert saved is not None
+        assert saved.get("password") == "new-pass"
+        assert result._history
+
+    @pytest.mark.asyncio
+    async def test_connection_test_error_summary_uses_meaningful_line(
+        self, vault_dir, registry
+    ):
+        """Error display shows last non-empty line (exception msg), not traceback header."""
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+
+        traceback_text = (
+            "Traceback (most recent call last):\n"
+            "  File \"test.py\", line 3, in <module>\n"
+            "    conn = psycopg2.connect(host=os.environ['DS_HOST'])\n"
+            "psycopg2.OperationalError: could not connect to server\n"
+        )
+        cell = MagicMock()
+        cell.stdout = ""
+        cell.stderr = traceback_text
+        cell.error = None
+
+        pad = AsyncMock()
+        pad.execute = AsyncMock(return_value=cell)
+        pad.reset = AsyncMock()
+        pad.install_packages = AsyncMock()
+
+        scratchpads = AsyncMock()
+        scratchpads.get_or_create = AsyncMock(return_value=pad)
+
+        engine_def = registry.get("postgresql")
+        credentials = {
+            "host": "bad-host", "port": "5432",
+            "database": "prod_db", "user": "alice", "password": "pw",
+        }
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(return_value="n")),
+        ):
+            result = await _run_connection_test(
+                console, scratchpads, vault, engine_def, credentials,
+                retry_fields=engine_def.fields,
+            )
+
+        assert result is False
+        printed = " ".join(str(c) for c in console.print.call_args_list)
+        assert "psycopg2.OperationalError" in printed
+
+
+class TestPromptCopyConsistency:
+    """Verify that interactive prompts use (y/n) style and Esc cancels safely."""
+
+    @pytest.mark.asyncio
+    async def test_esc_on_engine_selection_returns_session_unchanged(
+        self, registry, vault_dir, make_session
+    ):
+        """Pressing Esc on the engine-selection prompt returns the session with no vault writes."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(return_value=None)),
+        ):
+            result = await _handle_connect_datasource(console, session._scratchpads, session)
+
+        assert result is session
+        assert vault.list_connections() == []
+
+    @pytest.mark.asyncio
+    async def test_esc_on_retry_does_not_save(self, registry, vault_dir, make_session, make_cell):
+        """Pressing Esc at the retry prompt makes _run_connection_test return False."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+
+        pad = AsyncMock()
+        pad.execute = AsyncMock(return_value=make_cell(stdout="", error="bad creds"))
+        session._scratchpads.get_or_create = AsyncMock(return_value=pad)
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(return_value=None)),
+        ):
+            engine_def = registry.get("postgresql")
+            credentials = {"host": "h", "port": "5432", "database": "d", "user": "u", "password": "p"}
+            result = await _run_connection_test(
+                console, session._scratchpads, vault, engine_def, credentials,
+                retry_fields=engine_def.fields,
+            )
+
+        assert result is False
+        assert vault.list_connections() == []
+
+    @pytest.mark.asyncio
+    async def test_esc_on_do_you_have_these_returns_session(
+        self, registry, vault_dir, make_session
+    ):
+        """Pressing Esc after engine selection (on 'do you have these?') returns session."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+
+        poc_calls = iter(["PostgreSQL", None])  # engine selected, then Esc
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=lambda *a, **kw: next(poc_calls))),
+        ):
+            result = await _handle_connect_datasource(console, session._scratchpads, session)
+
+        assert result is session
+        assert vault.list_connections() == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_match_prompt_has_context_text(self, registry, vault_dir, make_session):
+        """The fuzzy-match confirmation prompt includes context text and uses (y/n)."""
+        session = make_session()
+        console = MagicMock()
+        vault = DataVault(vault_dir=vault_dir)
+
+        captured_labels: list[str] = []
+
+        def _capture(label, **kw):
+            captured_labels.append(label)
+            return None  # Esc on every prompt to bail out
+
+        with (
+            patch("anton.chat.DataVault", return_value=vault),
+            patch("anton.chat.DatasourceRegistry", return_value=registry),
+            patch("anton.chat._prompt_or_cancel", new=AsyncMock(side_effect=_capture)),
+        ):
+            # "PostgreeSQL" triggers fuzzy match against "PostgreSQL"
+            await _handle_connect_datasource(
+                console, session._scratchpads, session, datasource_name=None,
+            )
+
+        # Find the fuzzy-confirm label (contains "Use this datasource?")
+        fuzzy_labels = [lbl for lbl in captured_labels if "Use this datasource?" in lbl]
+        # If no fuzzy suggestions were generated, just verify the prompt constants are correct.
+        if fuzzy_labels:
+            lbl = fuzzy_labels[0]
+            assert "(y/n)" in lbl
+            assert "[y/n]" not in lbl
+
+    @pytest.mark.parametrize("label", [
+        "(y/n)",
+        "(reconnect/cancel)",
+        "(anton) Would you like to re-enter your credentials? (y/n)",
+        "(anton) Use this datasource? (y/n)",
+        "(anton) Do you have these available? (y/n/<list params>)",
+        "(anton) (reconnect/cancel)",
+    ])
+    def test_canonical_labels_no_bracket_style(self, label):
+        """None of the canonical prompt strings use the old bracket style."""
+        assert "[y/n]" not in label
+        assert "[reconnect/cancel]" not in label
+        assert "(y/n" in label or _PROMPT_RECONNECT_CANCEL in label

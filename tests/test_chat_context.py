@@ -323,7 +323,11 @@ class TestMindsSetupRecovery:
         monkeypatch.setenv("HOME", str(home))
 
         prompts = iter(["mdb.ai", "", "1", "new-key", "1"])
-        monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *args, **kwargs: next(prompts))
+
+        async def fake_prompt(*args, **kwargs):
+            return next(prompts)
+
+        monkeypatch.setattr("anton.chat._prompt_or_cancel", fake_prompt)
 
         calls: list[tuple[str, str, bool]] = []
 
@@ -384,7 +388,11 @@ class TestMindsSetupRecovery:
         monkeypatch.setenv("HOME", str(home))
 
         prompts = iter(["https://terabase.dev.mdb.ai", "", "2", "1"])
-        monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *args, **kwargs: next(prompts))
+
+        async def fake_prompt(*args, **kwargs):
+            return next(prompts)
+
+        monkeypatch.setattr("anton.chat._prompt_or_cancel", fake_prompt)
 
         calls: list[tuple[str, str, bool]] = []
 

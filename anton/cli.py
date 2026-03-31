@@ -10,6 +10,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from anton import __version__
+from anton.chat import _prompt_or_cancel
 
 
 def _reexec() -> None:
@@ -270,7 +271,7 @@ def _onboard(settings) -> None:
     _INTRO_LINES = [
         "Hi Boss! I'm Anton, your AI coworker.",
         "",
-        "For the best experience, I recommend Minds-Cloud as your LLM Provider:",
+        "For the best experience, I recommend Minds-Enterprise-Cloud as your LLM Provider:",
         "",
         "  \u2713 Smart model routing",
         "  \u2713 Faster responses",
@@ -279,7 +280,8 @@ def _onboard(settings) -> None:
     ]
 
     if sys.stdout.isatty():
-        _animate_onboard(console, __version__, _INTRO_LINES, settings=settings, ws=ws)
+        import asyncio
+        asyncio.run(_animate_onboard(console, __version__, _INTRO_LINES, settings=settings, ws=ws))
     else:
         # Static fallback for non-interactive terminals
         from anton.channel.branding import render_banner
@@ -294,8 +296,8 @@ def _ensure_api_key(settings) -> None:
     if not _has_api_key(settings):
         _onboard(settings)
 
-
-def _animate_onboard(console, version: str, intro_lines: list[str], *, settings, ws) -> None:
+    
+async def _animate_onboard(console, version: str, intro_lines: list[str], *, settings, ws) -> None:
     """Animate the robot talking while typing out the intro text below."""
     import time
 
@@ -381,32 +383,33 @@ def _animate_onboard(console, version: str, intro_lines: list[str], *, settings,
     console.print()
     console.print(f"[anton.glow] {'━' * 40}[/]")
     console.print()
-    console.print("  [bold]1[/]  [link=https://mdb.ai][anton.cyan]Minds-Cloud[/][/link] [anton.success](recommended)[/]")
-    console.print("  [bold]2[/]  [anton.cyan]Minds-Enterprise Server[/]")
-    console.print("  [bold]3[/]  [anton.cyan]Bring your own key[/] [anton.muted]Anthropic / OpenAI[/]")
+    console.print("  [bold]1[/]  [link=https://mdb.ai][anton.cyan]Minds-Enterprise-Cloud[/][/link] [anton.success](recommended)[/]")
+    console.print("  [bold]2[/]  [anton.cyan]Bring your own key[/] [anton.muted]Anthropic / OpenAI[/]")
     console.print()
 
     while True:
-        choice = Prompt.ask(
-            "Choose LLM Provider",
-            choices=["1", "2", "3"],
-            default="1",
-            console=console,
-        )
+        # choice = Prompt.ask(
+        #     "Choose LLM Provider",
+        #     choices=["1", "2", "3"],
+        #     default="1",
+        #     console=console,
+        # )
+        choice = await _prompt_or_cancel("(anton) Choose LLM Provider",
+                                   choices=["1", "2", "q"],
+                                   default="1")
 
         try:
             if choice == "1":
                 _setup_minds(settings, ws)
             elif choice == "2":
-                _setup_minds(settings, ws, default_url=None)
-            else:
                 _setup_other_provider(settings, ws)
+            elif choice == "3":
+                _setup_minds(settings, ws, default_url=None)
             break  # success
         except _SetupRetry:
             console.print()
-            console.print("  [bold]1[/]  [link=https://mdb.ai][anton.cyan]Minds-Cloud[/][/link] [anton.success](recommended)[/]")
-            console.print("  [bold]2[/]  [anton.cyan]Minds-Enterprise Server[/]")
-            console.print("  [bold]3[/]  [anton.cyan]Bring your own key[/] [anton.muted]Anthropic / OpenAI[/]")
+            console.print("  [bold]1[/]  [link=https://mdb.ai][anton.cyan]Minds-Enterprise-Cloud[/][/link] [anton.success](recommended)[/]")
+            console.print("  [bold]2[/]  [anton.cyan]Bring your own key[/] [anton.muted]Anthropic / OpenAI[/]")
             console.print()
             continue
 
@@ -421,7 +424,7 @@ def _animate_onboard(console, version: str, intro_lines: list[str], *, settings,
     model_label = settings.planning_model
     if provider_label == "openai-compatible":
         if settings.minds_url and "mdb.ai" in settings.minds_url:
-            provider_label = "Minds-Cloud"
+            provider_label = "Minds-Enterprise-Cloud"
         else:
             provider_label = "Minds-Enterprise Server"
         model_label = "smart_router"
@@ -552,14 +555,21 @@ def _setup_minds(settings, ws, *, default_url: str | None = "https://mdb.ai") ->
 
     ssl_verify = True
     llm_ok = False
+    rate_limited = False
 
     with Live(Spinner("dots", text="  Connecting...", style="anton.cyan"), console=console, transient=True):
-        llm_ok = _minds_test_llm(minds_url, api_key, verify=True)
-        if not llm_ok:
-            llm_ok_no_ssl = _minds_test_llm(minds_url, api_key, verify=False)
-            if llm_ok_no_ssl:
+        result = _minds_test_llm(minds_url, api_key, verify=True)
+        if result == "rate_limited":
+            rate_limited = True
+        elif not result:
+            result_no_ssl = _minds_test_llm(minds_url, api_key, verify=False)
+            if result_no_ssl == "rate_limited":
+                rate_limited = True
+            elif result_no_ssl:
                 ssl_verify = False
                 llm_ok = True
+        else:
+            llm_ok = True
 
     if llm_ok and not ssl_verify:
         console.print("  [anton.warning]SSL certificate verification failed.[/]")
@@ -589,6 +599,9 @@ def _setup_minds(settings, ws, *, default_url: str | None = "https://mdb.ai") ->
         ws.set_secret("ANTON_CODING_MODEL", "_code_")
         if not ssl_verify:
             ws.set_secret("ANTON_MINDS_SSL_VERIFY", "false")
+    elif rate_limited:
+        console.print("[anton.error]Token limit exceeded. Visit https://mdb.ai to upgrade or to top up your tokens.[/]")
+        raise _SetupRetry()
     else:
         console.print("  [anton.error]Could not connect. Check your API key and URL.[/]")
         retry = Confirm.ask("  Try again?", default=True, console=console)

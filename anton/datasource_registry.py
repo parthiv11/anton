@@ -37,6 +37,9 @@ class DatasourceEngine:
     auth_method: str = ""
     auth_methods: list[AuthMethod] = field(default_factory=list)
     test_snippet: str = ""
+    popular: bool = False
+    # True for engines defined in ~/.anton/datasources.md
+    custom: bool = False
 
 
 # Matches a level-2 heading followed by a ```yaml fenced block.
@@ -63,7 +66,9 @@ def _parse_fields(raw: list) -> list[DatasourceField]:
     return result
 
 
-def _parse_file(path: Path) -> dict[str, DatasourceEngine]:
+def _parse_file(
+    path: Path, *, custom: bool = False
+) -> dict[str, DatasourceEngine]:
     """Extract engine definitions from a datasources.md file."""
     if not path.is_file():
         return {}
@@ -108,6 +113,8 @@ def _parse_file(path: Path) -> dict[str, DatasourceEngine]:
             auth_method=str(data.get("auth_method", "")),
             auth_methods=auth_methods,
             test_snippet=str(data.get("test_snippet", "")),
+            popular=bool(data.get("popular", False)),
+            custom=custom,
         )
 
     return engines
@@ -125,7 +132,9 @@ class DatasourceRegistry:
 
     def _load(self) -> None:
         self._engines = _parse_file(self._BUILTIN_PATH)
-        for slug, engine in _parse_file(self._USER_PATH).items():
+        for slug, engine in _parse_file(
+            self._USER_PATH, custom=True
+        ).items():
             self._engines[slug] = engine
 
     def reload(self) -> None:
