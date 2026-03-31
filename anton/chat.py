@@ -46,7 +46,7 @@ from anton.tools import (
     prepare_scratchpad_exec,
 )
 from anton.checks import TokenLimitInfo, TokenLimitStatus, check_minds_token_limits
-from anton.minds_http import _minds_request
+from anton.minds_http import minds_request
 from anton.data_vault import DataVault, _slug_env_prefix
 from anton.datasource_registry import (
     DatasourceEngine,
@@ -1867,7 +1867,7 @@ def _minds_list_minds(base_url: str, api_key: str, verify: bool = True) -> list[
     import json as _json
 
     url = f"{base_url}/api/v1/minds/"  # trailing slash required
-    raw = _minds_request(url, api_key, verify=verify)
+    raw = minds_request(url, api_key, verify=verify)
     data = _json.loads(raw.decode())
 
     if isinstance(data, list):
@@ -1885,7 +1885,7 @@ def _minds_get_mind(
 
     url = f"{base_url}/api/v1/minds/{mind_name}"
     try:
-        raw = _minds_request(url, api_key, verify=verify, timeout=15)
+        raw = minds_request(url, api_key, verify=verify, timeout=15)
         return _json.loads(raw.decode())
     except Exception:
         return None
@@ -1929,7 +1929,7 @@ def _minds_list_datasources(
     import json as _json
 
     url = f"{base_url}/api/v1/datasources"
-    raw = _minds_request(url, api_key, verify=verify)
+    raw = minds_request(url, api_key, verify=verify)
     data = _json.loads(raw.decode())
 
     # Response may be a list or a dict with a "datasources" key
@@ -1952,13 +1952,17 @@ def _minds_test_llm(base_url: str, api_key: str, verify: bool = True) -> bool:
     ).encode()
 
     try:
-        _minds_request(url, api_key, method="POST", payload=payload, verify=verify)
+        minds_request(url, api_key, method="POST", payload=payload, verify=verify)
         return True
     except urllib.error.HTTPError as e:
         if e.code == 429:
             return "rate_limited"
+        if e.code == 500:
+            body = e.read().decode(errors="replace")
+            if "not found" in body.lower():
+                return True
         return False
-    except Exception:
+    except Exception as e:
         return False
 
 
@@ -4071,7 +4075,7 @@ async def _chat_loop(
 
     toolbar = {"stats": "", "status": ""}
     display = StreamDisplay(console, toolbar=toolbar)
-    _last_token_status: TokenLimitInfo | None = None
+    last_token_status: TokenLimitInfo | None = None
 
     def _bottom_toolbar():
         stats = toolbar["stats"]
@@ -4311,10 +4315,10 @@ async def _chat_loop(
             if message_content is None:
                 message_content = stripped
 
-            if _last_token_status is not None and _last_token_status.status is TokenLimitStatus.EXCEEDED:
-                pct = int(_last_token_status.used / _last_token_status.limit * 100) if _last_token_status.limit else 100
+            if last_token_status is not None and last_token_status.status is TokenLimitStatus.EXCEEDED:
+                pct = int(last_token_status.used / last_token_status.limit * 100) if last_token_status.limit else 100
                 console.print(
-                    f"[anton.error]Token limit reached: {_last_token_status.used:,} / {_last_token_status.limit:,} tokens used ({pct}%). "
+                    f"[anton.error]Token limit reached: {last_token_status.used:,} / {last_token_status.limit:,} tokens used ({pct}%). "
                     "Visit mdb.ai to upgrade your plan or top up your tokens.[/]"
                 )
                 console.print()
@@ -4359,14 +4363,14 @@ async def _chat_loop(
                 parts = []
 
                 if settings.minds_api_key and settings.minds_url:
-                    _last_token_status = check_minds_token_limits(
+                    last_token_status = check_minds_token_limits(
                         settings.minds_url.rstrip("/"),
                         settings.minds_api_key,
                         verify=settings.minds_ssl_verify,
                     )
-                    if _last_token_status.billing_cycle_limit > 0:
-                        _pct = _last_token_status.billing_cycle_used * 100 // _last_token_status.billing_cycle_limit
-                        parts.append(f"{_last_token_status.billing_cycle_used:,} / {_last_token_status.billing_cycle_limit:,} ({_pct}%)")
+                    if last_token_status.billing_cycle_limit > 0:
+                        _pct = last_token_status.billing_cycle_used * 100 // last_token_status.billing_cycle_limit
+                        parts.append(f"{last_token_status.billing_cycle_used:,} / {last_token_status.billing_cycle_limit:,} ({_pct}%)")
 
                 parts.append(f"{elapsed:.1f}s")
                 parts.append(f"{total_input} in / {total_output} out")
@@ -4375,10 +4379,10 @@ async def _chat_loop(
                 toolbar["stats"] = "  ".join(parts)
                 toolbar["status"] = ""
                 display.finish()
-                if _last_token_status is not None and _last_token_status.status is TokenLimitStatus.WARNING:
-                    pct = int(_last_token_status.used / _last_token_status.limit * 100) if _last_token_status.limit else 80
+                if last_token_status is not None and last_token_status.status is TokenLimitStatus.WARNING:
+                    pct = int(last_token_status.used / last_token_status.limit * 100) if last_token_status.limit else 80
                     console.print(
-                        f"[anton.warning]Approaching token limit: {_last_token_status.used:,} / {_last_token_status.limit:,} tokens used ({pct}%). "
+                        f"[anton.warning]Approaching token limit: {last_token_status.used:,} / {last_token_status.limit:,} tokens used ({pct}%). "
                         "Visit mdb.ai to upgrade your plan or top up your tokens.[/]"
                     )
                     console.print()

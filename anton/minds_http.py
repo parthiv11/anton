@@ -4,7 +4,7 @@ import ssl
 import urllib.request
 
 
-def _minds_request(
+def minds_request(
     url: str,
     api_key: str,
     *,
@@ -24,7 +24,8 @@ def _minds_request(
     # Browser-like headers to avoid Cloudflare bot detection
     req.add_header(
         "User-Agent",
-        "Mozilla/5.0 (compatible; Anton/1.0; +https://github.com/mindsdb/anton)",
+        "Mozilla/5.0 (compatible; Anton/1.0;"
+        " +https://github.com/mindsdb/anton)",
     )
     req.add_header("Accept-Language", "en-US,en;q=0.9")
     req.add_header("Accept-Encoding", "identity")

@@ -4,7 +4,7 @@ import enum
 import json as _json
 from dataclasses import dataclass
 
-from anton.minds_http import _minds_request
+from anton.minds_http import minds_request
 
 
 class TokenLimitStatus(enum.Enum):
@@ -52,7 +52,7 @@ def check_minds_token_limits(
     """
     url = f"{base_url}/api/v1/limits/"
     try:
-        raw = _minds_request(url, api_key, verify=verify, timeout=5)
+        raw = minds_request(url, api_key, verify=verify, timeout=5)
         data = _json.loads(raw.decode())
     except Exception:
         return TokenLimitInfo(status=TokenLimitStatus.OK)
