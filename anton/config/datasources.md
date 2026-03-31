@@ -640,6 +640,29 @@ and self-hosted PostgreSQL with the TimescaleDB extension installed.
 
 ---
 
+## Gmail
+
+```yaml
+engine: gmail
+display_name: Gmail
+name_from: email
+popular: true
+fields:
+  - { name: email,         required: true,  secret: false, description: "your Gmail address (e.g. you@gmail.com)" }
+  - { name: app_password,  required: true,  secret: true,  description: "16-character app password from myaccount.google.com/apppasswords" }
+test_snippet: |
+  import imaplib, os
+  imap = imaplib.IMAP4_SSL("imap.gmail.com")
+  imap.login(os.environ['DS_EMAIL'], os.environ['DS_APP_PASSWORD'])
+  imap.logout()
+  print("ok")
+```
+
+Requires 2-Factor Authentication enabled on your Google account. Then generate an App Password
+at myaccount.google.com/apppasswords — select "Mail" as the app. No OAuth setup needed.
+
+---
+
 ## Email
 
 ```yaml
@@ -661,9 +684,8 @@ test_snippet: |
   print("ok")
 ```
 
-For Gmail, enable IMAP in Settings → See all settings → Forwarding and POP/IMAP, then use an
-App Password (Google Account → Security → 2-Step Verification → App passwords) instead of your
-account password. For other providers, set imap_server and smtp_server accordingly.
+For non-Gmail providers, set imap_server and smtp_server accordingly. Use an app-specific
+password if your provider requires it.
 
 ---
 

@@ -1696,26 +1696,20 @@ def _mask_secret(value: str, *, keep: int = 4) -> str:
     return f"{value[:keep]}...{value[-keep:]}"
 
 
-_HELP_SENTINEL = "\x00__HELP__"
-
-
 async def _prompt_or_cancel(
     label: str,
     *,
     default: str = "",
     password: bool = False,
     choices: list[str] | None = None,
-    show_help_hint: bool = False,
 ) -> str | None:
     """Prompt for free-text input; return None if the user presses Esc.
 
     Fully async via prompt_toolkit's prompt_async() — event loop never blocked.
     Only Esc is bound for cancellation; Ctrl+C propagates as KeyboardInterrupt.
     If `choices` is given, re-prompts until input matches or user presses Esc.
-    If `show_help_hint` is True, Ctrl+H is bound and returns _HELP_SENTINEL.
     """
     _esc = False
-    _help = False
     bindings = KeyBindings()
 
     @bindings.add("escape")
@@ -1724,22 +1718,9 @@ async def _prompt_or_cancel(
         _esc = True
         event.app.exit(result="")
 
-    if show_help_hint:
-        @bindings.add("c-h")
-        def _on_help(event):
-            nonlocal _help
-            _help = True
-            event.app.exit(result="")
-
     pt_style = PTStyle.from_dict({"bottom-toolbar": "noreverse nounderline bg:default"})
 
     def _toolbar():
-        if show_help_hint:
-            return HTML(
-                "<style fg='#5f9ea0' italic='true'>"
-                "Esc to cancel ·  Ctrl+H for instructions on getting these credentials"
-                "</style>"
-            )
         return HTML("<style fg='#5f9ea0' italic='true'>Esc to cancel</style>")
 
     if password:
@@ -1763,12 +1744,9 @@ async def _prompt_or_cancel(
 
     while True:
         _esc = False
-        _help = False
         result = await pt_session.prompt_async(message)
         if _esc:
             return None
-        if _help:
-            return _HELP_SENTINEL
         val = result.strip() if result else default
         if choices is None or val in choices:
             break
@@ -2803,22 +2781,24 @@ async def _handle_add_custom_datasource(
                 credentials[f.name] = inline_value
     console.print()
 
+    # Offer help before collecting credentials
+    help_answer = await _prompt_or_cancel(
+        "(anton) Need instructions on how to obtain these credentials? (y/n)",
+    )
+    if help_answer is None:
+        return None
+    if help_answer.strip().lower() == "y":
+        await _show_credential_help(
+            console, session, display_name, None, fields,
+        )
+
     # Prompt for any secret fields not provided inline
     for f, raw in zip(fields, raw_fields):
         if not f.secret:
             continue
         if str(raw.get("value", "")).strip():
             continue
-        while True:
-            value = await _prompt_or_cancel(
-                f"(anton) {f.name}", password=True, show_help_hint=True,
-            )
-            if value == _HELP_SENTINEL:
-                await _show_credential_help(
-                    console, session, display_name, f, fields,
-                )
-                continue
-            break
+        value = await _prompt_or_cancel(f"(anton) {f.name}", password=True)
         if value is None:
             return None
         if value:
@@ -2832,16 +2812,7 @@ async def _handle_add_custom_datasource(
             continue
         if f.name in credentials:
             continue
-        while True:
-            value = await _prompt_or_cancel(
-                f"(anton) {f.name}", show_help_hint=True,
-            )
-            if value == _HELP_SENTINEL:
-                await _show_credential_help(
-                    console, session, display_name, f, fields,
-                )
-                continue
-            break
+        value = await _prompt_or_cancel(f"(anton) {f.name}")
         if value is None:
             return None
         if value:
@@ -3003,21 +2974,37 @@ async def _show_credential_help(
     current_field,
     all_fields: list,
 ) -> None:
-    """Use the LLM to explain how to obtain a specific credential."""
-    field_names = ", ".join(f.name for f in all_fields)
+    """Use the LLM to explain how to obtain credentials."""
+    field_descriptions = ", ".join(
+        f"{f.name} ({f.description})" for f in all_fields
+    )
+    if current_field is not None:
+        prompt = (
+            f"I'm connecting to {service_name} and need to provide: {field_descriptions}\n\n"
+            f"I need help with the '{current_field.name}' field"
+            f" ({current_field.description}).\n\n"
+            "Give me a brief step-by-step guide on where and how to get this credential. "
+            "Be concise — numbered steps, no fluff."
+        )
+        heading = f"[anton.cyan](anton)[/] How to get [bold]{current_field.name}[/]:"
+    else:
+        prompt = (
+            f"I'm connecting to {service_name} and need these credentials: {field_descriptions}\n\n"
+            "Give me a brief step-by-step guide on where and how to obtain each of these. "
+            "Be concise — numbered steps, no fluff."
+        )
+        heading = f"[anton.cyan](anton)[/] How to get credentials for [bold]{service_name}[/]:"
+
+    console.print()
+    console.print("[anton.muted]        Looking up instructions…[/]")
+
     try:
         resp = await session._llm.plan(
             system="You are a helpful assistant that guides users through obtaining credentials for services.",
             messages=[
                 {
                     "role": "user",
-                    "content": (
-                        f"I'm connecting to {service_name} and need to provide: {field_names}\n\n"
-                        f"I need help with the '{current_field.name}' field"
-                        f" ({current_field.description}).\n\n"
-                        "Give me a brief step-by-step guide on where and how to get this credential. "
-                        "Be concise — numbered steps, no fluff."
-                    ),
+                    "content": prompt,
                 }
             ],
             max_tokens=512,
@@ -3027,7 +3014,7 @@ async def _show_credential_help(
         help_text = "Sorry, couldn't fetch help right now. Try checking the service's documentation."
 
     console.print()
-    console.print(f"[anton.cyan](anton)[/] How to get [bold]{current_field.name}[/]:")
+    console.print(heading)
     console.print()
     for line in help_text.splitlines():
         console.print(f"        {line}")
@@ -3443,6 +3430,16 @@ async def _handle_connect_datasource(
 
     console.print()
 
+    help_answer = await _prompt_or_cancel(
+        "(anton) Need instructions on how to obtain these credentials? (y/n)",
+    )
+    if help_answer is None:
+        return session
+    if help_answer.strip().lower() == "y":
+        await _show_credential_help(
+            console, session, engine_def.display_name, None, active_fields,
+        )
+
     mode_answer = await _prompt_or_cancel(
         "(anton) Do you have these available? (y/n/list params)",
     )
@@ -3478,25 +3475,12 @@ async def _handle_connect_datasource(
     credentials: dict[str, str] = {}
 
     for f in fields_to_collect:
-        while True:
-            if f.secret:
-                value = await _prompt_or_cancel(
-                    f"(anton) {f.name}", password=True, show_help_hint=True,
-                )
-            elif f.default:
-                value = await _prompt_or_cancel(
-                    f"(anton) {f.name}", default=f.default, show_help_hint=True,
-                )
-            else:
-                value = await _prompt_or_cancel(
-                    f"(anton) {f.name}", show_help_hint=True,
-                )
-            if value == _HELP_SENTINEL:
-                await _show_credential_help(
-                    console, session, engine_def.display_name, f, fields_to_collect,
-                )
-                continue
-            break
+        if f.secret:
+            value = await _prompt_or_cancel(f"(anton) {f.name}", password=True)
+        elif f.default:
+            value = await _prompt_or_cancel(f"(anton) {f.name}", default=f.default)
+        else:
+            value = await _prompt_or_cancel(f"(anton) {f.name}")
         if value is None:
             return session
         if value:
