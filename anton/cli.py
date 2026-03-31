@@ -11,6 +11,7 @@ from rich.table import Table
 
 from anton import __version__
 from anton.chat import _prompt_or_cancel
+from anton.llm.openai import build_chat_completion_kwargs
 
 
 def _reexec() -> None:
@@ -641,6 +642,34 @@ def _validate_with_spinner(console, label: str, fn) -> None:
     console.print(f"  [anton.success]Validated[/] [anton.muted]{label}[/]")
 
 
+def _normalize_probe_text(text: str | None) -> str:
+    """Normalize a tiny probe response for exact-match validation."""
+    if not text:
+        return ""
+    return text.strip().lower().rstrip(".!?")
+
+
+def _validate_openai_probe_response(response) -> None:
+    """Accept a short successful probe, including truncated completions."""
+    if not getattr(response, "choices", None):
+        raise ValueError("OpenAI validation returned no choices.")
+
+    choice = response.choices[0]
+    finish_reason = getattr(choice, "finish_reason", None)
+    message = getattr(choice, "message", None)
+    content = _normalize_probe_text(getattr(message, "content", None))
+
+    if finish_reason == "length":
+        if content:
+            return
+        raise ValueError("OpenAI validation response was truncated before any content was returned.")
+
+    if content == "pong":
+        return
+
+    raise ValueError(f"Unexpected validation response: {content or '<empty>'}")
+
+
 def _setup_anthropic(settings, ws) -> None:
     """Set up Anthropic with a single model for both reasoning and coding."""
     from rich.prompt import Confirm
@@ -701,7 +730,12 @@ def _setup_openai(settings, ws) -> None:
         def _test():
             import openai
             client = openai.OpenAI(api_key=api_key)
-            client.chat.completions.create(model=model, max_tokens=1, messages=[{"role": "user", "content": "ping"}])
+            response = client.chat.completions.create(**build_chat_completion_kwargs(
+                model=model,
+                messages=[{"role": "user", "content": "Reply with exactly: pong"}],
+                max_tokens=16,
+            ))
+            _validate_openai_probe_response(response)
 
         _validate_with_spinner(console, model, _test)
     except Exception as exc:

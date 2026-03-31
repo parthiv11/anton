@@ -52,6 +52,7 @@ from anton.datasource_registry import (
     DatasourceRegistry,
     _YAML_BLOCK_RE,
 )
+from anton.llm.openai import build_chat_completion_kwargs
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
@@ -2006,13 +2007,11 @@ def _minds_test_llm(base_url: str, api_key: str, verify: bool = True) -> bool:
     import json as _json
 
     url = f"{base_url}/api/v1/chat/completions"
-    payload = _json.dumps(
-        {
-            "model": "_code_",
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 1,
-        }
-    ).encode()
+    payload = _json.dumps(build_chat_completion_kwargs(
+        model="_code_",
+        messages=[{"role": "user", "content": "ping"}],
+        max_tokens=1,
+    )).encode()
 
     try:
         _minds_request(url, api_key, method="POST", payload=payload, verify=verify)
