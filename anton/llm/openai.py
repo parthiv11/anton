@@ -164,6 +164,25 @@ def _translate_user_blocks(blocks: list[dict]) -> list[dict]:
     return result
 
 
+def build_chat_completion_kwargs(
+    *,
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    stream: bool = False,
+) -> dict:
+    """Build chat.completions kwargs using modern OpenAI parameter names."""
+    kwargs: dict = {
+        "model": model,
+        "messages": messages,
+        "max_completion_tokens": max_tokens,
+    }
+    if stream:
+        kwargs["stream"] = True
+        kwargs["stream_options"] = {"include_usage": True}
+    return kwargs
+
+
 class OpenAIProvider(LLMProvider):
     def __init__(
         self,
@@ -194,11 +213,11 @@ class OpenAIProvider(LLMProvider):
     ) -> LLMResponse:
         oai_messages = _translate_messages(system, messages)
 
-        kwargs: dict = {
-            "model": model,
-            "messages": oai_messages,
-            "max_completion_tokens": max_tokens,
-        }
+        kwargs = build_chat_completion_kwargs(
+            model=model,
+            messages=oai_messages,
+            max_tokens=max_tokens,
+        )
         if tools:
             kwargs["tools"] = _translate_tools(tools)
         if tool_choice:
@@ -263,13 +282,12 @@ class OpenAIProvider(LLMProvider):
     ) -> AsyncIterator[StreamEvent]:
         oai_messages = _translate_messages(system, messages)
 
-        kwargs: dict = {
-            "model": model,
-            "messages": oai_messages,
-            "max_completion_tokens": max_tokens,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
+        kwargs = build_chat_completion_kwargs(
+            model=model,
+            messages=oai_messages,
+            max_tokens=max_tokens,
+            stream=True,
+        )
         if tools:
             kwargs["tools"] = _translate_tools(tools)
 
