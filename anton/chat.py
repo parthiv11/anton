@@ -86,11 +86,10 @@ _RESILIENCE_NUDGE = (
     "Only involve the user if the problem truly requires something only they can provide."
 )
 
-# ── Interactive prompt copy ───────────────────────────────────────────────────
-_PROMPT_YN = "(y/n)"
+# TODO: Is this enough for now?
+TOKEN_STATUS_CACHE_TTL = 60.0
+
 _PROMPT_RECONNECT_CANCEL = "(reconnect/cancel)"
-_PROMPT_SELECT_Q = "(or q to cancel)"
-_PROMPT_MEMORY_SAVE = "(y/n/pick numbers)"
 
 
 class ChatSession:
@@ -131,7 +130,7 @@ class ChatSession:
         self._history_store = history_store
         self._session_id = session_id
         self._cancel_event = asyncio.Event()
-        self._active_datasource: str | None = None  # slug like "hubspot-2"
+        self._active_datasource: str | None = None
         self._scratchpads = ScratchpadManager(
             coding_provider=coding_provider,
             coding_model=getattr(llm_client, "coding_model", ""),
@@ -4059,6 +4058,7 @@ async def _chat_loop(
     toolbar = {"stats": "", "status": ""}
     display = StreamDisplay(console, toolbar=toolbar)
     last_token_status: TokenLimitInfo | None = None
+    last_token_status_checked_at: float | None = None
 
     def _bottom_toolbar():
         stats = toolbar["stats"]
@@ -4357,17 +4357,22 @@ async def _chat_loop(
                 parts = []
 
                 if settings.minds_api_key and settings.minds_url:
-                    last_token_status = check_minds_token_limits(
-                        settings.minds_url.rstrip("/"),
-                        settings.minds_api_key,
-                        verify=settings.minds_ssl_verify,
-                    )
+                    #TODO: Lets check if this is best solution
+                    now = time.monotonic()
+                    if last_token_status_checked_at is None or (now - last_token_status_checked_at) >= TOKEN_STATUS_CACHE_TTL:
+                        last_token_status = check_minds_token_limits(
+                            settings.minds_url.rstrip("/"),
+                            settings.minds_api_key,
+                            verify=settings.minds_ssl_verify,
+                        )
+                        last_token_status_checked_at = now
                     if last_token_status.billing_cycle_limit > 0:
                         _pct = last_token_status.billing_cycle_used * 100 // last_token_status.billing_cycle_limit
                         parts.append(f"{last_token_status.billing_cycle_used:,} / {last_token_status.billing_cycle_limit:,} ({_pct}%)")
 
                 parts.append(f"{elapsed:.1f}s")
-                parts.append(f"{total_input} in / {total_output} out")
+                if not settings.minds_api_key and not settings.minds_url:
+                    parts.append(f"{total_input} in / {total_output} out")
                 if ttft is not None:
                     parts.append(f"TTFT {int(ttft * 1000)}ms")
                 toolbar["stats"] = "  ".join(parts)
