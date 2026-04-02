@@ -4119,7 +4119,7 @@ async def _agent_zero(console: Console, session: "ChatSession", settings) -> str
     console.print()
 
     answer = await _prompt_or_cancel(
-        "       Run analysis, or skip straight to chatting?",
+        "(anton) Run analysis, or skip straight to chatting?",
         choices_display="run/skip",
         default="run",
         allow_cancel=True,
