@@ -4245,7 +4245,8 @@ async def _agent_zero(console: Console, session: "ChatSession", settings) -> str
     if cell is None or cell.error:
         err = cell.error if cell else "No result"
         console.print()
-        console.print(f"[anton.error]  Demo encountered an issue: {err[:200]}[/]")
+        err_line = err.strip().split("\n")[-1] if err else err
+        console.print(f"[anton.error]  Demo encountered an issue: {err_line}[/]")
         console.print("[anton.muted]  You can still use Anton normally.[/]")
         console.print()
         return None
