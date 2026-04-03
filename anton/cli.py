@@ -308,6 +308,8 @@ def main(
         first_run = False
         if not _has_api_key(settings):
             _onboard(settings)
+            if not _has_api_key(settings):
+                return
             first_run = not settings.first_run_done
         else:
             from anton.channel.branding import render_banner
