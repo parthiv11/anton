@@ -62,6 +62,7 @@ class Scratchpad:
     _coding_provider: str = field(default="anthropic", repr=False)
     _coding_model: str = field(default="", repr=False)
     _coding_api_key: str = field(default="", repr=False)
+    _coding_base_url: str = field(default="", repr=False)
     _venv_dir: str | None = field(default=None, repr=False)
     _venv_python: str | None = field(default=None, repr=False)
     _installed_packages: set[str] = field(default_factory=set, repr=False)
@@ -355,13 +356,19 @@ class Scratchpad:
             }.get(self._coding_provider, "")
             if sdk_key:
                 env[sdk_key] = self._coding_api_key
-        # For openai-compatible (Minds), ANTON_OPENAI_BASE_URL takes priority
-        # over any OPENAI_BASE_URL in the user's shell. Without this, get_llm()
-        # defaults to api.openai.com and the mdb_ key gets a 401.
-        if self._coding_provider == "openai-compatible":
-            base_url = env.get("ANTON_OPENAI_BASE_URL") or env.get("OPENAI_BASE_URL") or ""
+        # For openai-compatible (Minds), force OPENAI_BASE_URL so get_llm()
+        # doesn't default to api.openai.com. The explicit _coding_base_url from
+        # settings takes top priority, then ANTON_OPENAI_BASE_URL from .env.
+        if self._coding_provider in ("openai", "openai-compatible"):
+            base_url = (
+                self._coding_base_url
+                or env.get("ANTON_OPENAI_BASE_URL")
+                or env.get("OPENAI_BASE_URL")
+                or ""
+            )
             if base_url:
                 env["OPENAI_BASE_URL"] = base_url
+                env["ANTON_OPENAI_BASE_URL"] = base_url
         # Pass uv path so the boot script can use it for auto-installing
         # missing modules (same installer that created the venv).
         uv = self._find_uv()
@@ -886,12 +893,14 @@ class ScratchpadManager:
         coding_provider: str = "anthropic",
         coding_model: str = "",
         coding_api_key: str = "",
+        coding_base_url: str = "",
         workspace_path: Path | None = None,
     ) -> None:
         self._pads: dict[str, Scratchpad] = {}
         self._coding_provider: str = coding_provider
         self._coding_model: str = coding_model
         self._coding_api_key: str = coding_api_key
+        self._coding_base_url: str = coding_base_url
         if workspace_path is not None:
             self._venvs_base = workspace_path / ".anton" / "scratchpad-venvs"
         else:
@@ -913,6 +922,7 @@ class ScratchpadManager:
                 _coding_provider=self._coding_provider,
                 _coding_model=self._coding_model,
                 _coding_api_key=self._coding_api_key,
+                _coding_base_url=self._coding_base_url,
                 _venvs_base=self._venvs_base,
             )
             await pad.start()

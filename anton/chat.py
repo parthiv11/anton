@@ -107,6 +107,7 @@ class ChatSession:
         console: Console | None = None,
         coding_provider: str = "anthropic",
         coding_api_key: str = "",
+        coding_base_url: str = "",
         initial_history: list[dict] | None = None,
         history_store: HistoryStore | None = None,
         session_id: str | None = None,
@@ -135,6 +136,7 @@ class ChatSession:
             coding_provider=coding_provider,
             coding_model=getattr(llm_client, "coding_model", ""),
             coding_api_key=coding_api_key,
+            coding_base_url=coding_base_url,
             workspace_path=workspace.base if workspace else None,
         )
 
@@ -1422,6 +1424,7 @@ def _rebuild_session(
         console=console,
         coding_provider=settings.coding_provider,
         coding_api_key=api_key,
+        coding_base_url=settings.openai_base_url or "",
         history_store=history_store,
         session_id=session_id,
         proactive_dashboards=settings.proactive_dashboards,
@@ -4435,6 +4438,7 @@ async def _chat_loop(
         console=console,
         coding_provider=settings.coding_provider,
         coding_api_key=coding_api_key,
+        coding_base_url=settings.openai_base_url or "",
         history_store=history_store,
         session_id=current_session_id,
         proactive_dashboards=settings.proactive_dashboards,
