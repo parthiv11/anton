@@ -350,6 +350,11 @@ class StreamDisplay:
             self._update_spinner()
             return
 
+        if phase == "connect_datasource":
+            # Interactive tool — stop spinner so user can see and type
+            self._stop_spinner()
+            return
+
         label = PHASE_LABELS.get(phase, phase)
         eta_str = f"  ~{int(eta)}s" if eta else ""
         self._line2_status = f"{label}  {message}{eta_str}"

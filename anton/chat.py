@@ -872,6 +872,18 @@ class ChatSession:
                                         (cell.stdout or "")[:2000],
                                         description=description,
                                     )
+                        elif tc.name == "connect_new_datasource":
+                            # Interactive tool — pause spinner so user can type
+                            yield StreamTaskProgress(
+                                phase="connect_datasource",
+                                message="Connecting datasource...",
+                            )
+                            result_text = await dispatch_tool(self, tc.name, tc.input)
+                            # Resume spinner for LLM follow-up
+                            yield StreamTaskProgress(
+                                phase="analyzing",
+                                message="Analyzing results...",
+                            )
                         else:
                             result_text = await dispatch_tool(self, tc.name, tc.input)
                             if (
