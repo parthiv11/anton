@@ -861,7 +861,7 @@ def _setup_gemini(settings, ws) -> None:
         console.print("  [anton.warning]Please enter your API key.[/]")
     api_key = api_key.strip()
 
-    model = _setup_prompt("Model", default="gemini-2.5-flash").strip()
+    model = _setup_prompt("Model", default="gemini-3-flash-preview").strip()
 
     try:
         def _test():
